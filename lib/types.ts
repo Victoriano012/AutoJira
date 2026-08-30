@@ -1,4 +1,6 @@
-export type TicketType = "ai" | "human_review";
+/** "subgraph" is a label for tickets whose work is decomposed into a nested
+ * graph; execution still keys off whether a subgraph is actually present. */
+export type TicketType = "ai" | "human_review" | "subgraph";
 
 export type TicketStatus = "todo" | "running" | "review" | "done" | "error";
 

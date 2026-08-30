@@ -145,7 +145,18 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
 
       <div className="mt-1.5 flex items-end justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          {ticket.type === "ai" ? (
+          {ticket.type !== "human_review" &&
+          (ticket.type === "subgraph" || ticket.subgraph.tickets.length > 0) ? (
+            // A ticket that actually holds a graph reads as one whatever its
+            // stored type, so projects decomposed before this type existed
+            // label correctly without a migration.
+            <span
+              className="rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
+              title="Work decomposed into a nested graph"
+            >
+              Subgraph
+            </span>
+          ) : ticket.type !== "human_review" ? (
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
               AI
             </span>
