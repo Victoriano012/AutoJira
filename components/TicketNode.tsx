@@ -37,8 +37,8 @@ const statusText: Record<TicketStatus, string> = {
 
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
-  if (isTicketDone(t)) return "#c6d4cb";
-  if (t.type === "human_review") return "#d6d1bc";
+  if (isTicketDone(t)) return "#aad4b1";
+  if (t.type === "human_review") return "#dacb84";
   return "#d4d4d8";
 }
 
