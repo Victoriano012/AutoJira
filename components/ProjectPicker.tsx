@@ -283,7 +283,7 @@ export default function ProjectPicker() {
           + Project
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-base leading-tight text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          className="rounded-lg px-2 py-1.5 text-xl leading-none text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
