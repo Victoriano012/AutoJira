@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { ChatMessage, graphAtPath } from "@/lib/types";
+import { usePanelResize } from "@/lib/useResizable";
 
 const EMPTY: ChatMessage[] = []; // stable fallback so the selector snapshot doesn't churn
 
@@ -16,6 +17,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const { width, ref: panelRef, handleProps } = usePanelResize();
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -71,7 +73,12 @@ export default function ChatPanel() {
   }
 
   return (
-    <aside className="w-96 shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white">
+    <aside
+      ref={panelRef}
+      style={{ width }}
+      className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
+    >
+      <div {...handleProps} title="Drag to resize" />
       <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
         <span className="font-medium">Project chat</span>
         <button

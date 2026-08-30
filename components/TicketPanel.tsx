@@ -8,6 +8,7 @@ import {
   stopTicket,
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
+import { usePanelResize } from "@/lib/useResizable";
 import {
   dependenciesOf,
   graphAtPath,
@@ -53,6 +54,7 @@ export default function TicketPanel() {
   const [feedback, setFeedback] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const { width, ref: panelRef, handleProps } = usePanelResize();
 
   const graph = graphAtPath(project.graph, path);
   const ticket = graph?.tickets.find((t) => t.id === selectedId) ?? null;
@@ -78,7 +80,12 @@ export default function TicketPanel() {
   }
 
   return (
-    <aside className="w-96 shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white">
+    <aside
+      ref={panelRef}
+      style={{ width }}
+      className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
+    >
+      <div {...handleProps} title="Drag to resize" />
       <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor[ticket.status]}`} />
         <input
