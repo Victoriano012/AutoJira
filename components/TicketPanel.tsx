@@ -9,7 +9,7 @@ import {
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
-import { usePanelResize } from "@/lib/useResizable";
+import { usePanelResize, useSplitResize } from "@/lib/useResizable";
 import {
   dependenciesOf,
   dependentsOf,
@@ -42,6 +42,11 @@ export default function TicketPanel() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const { width, ref: panelRef, handleProps } = usePanelResize();
+  const {
+    height: logHeight,
+    ref: splitRef,
+    handleProps: splitHandleProps,
+  } = useSplitResize();
 
   const graph = graphAtPath(project.graph, path);
   const ticket = graph?.tickets.find((t) => t.id === selectedId) ?? null;
@@ -75,7 +80,7 @@ export default function TicketPanel() {
       className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
     >
       <div {...handleProps} title="Drag to resize" />
-      <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
+      <div className="shrink-0 flex items-center gap-2 p-3 border-b border-zinc-200">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor[ticket.status]}`} />
         <input
           className="flex-1 min-w-0 bg-transparent font-medium outline-none rounded px-1 focus:bg-zinc-100"
@@ -117,7 +122,8 @@ export default function TicketPanel() {
         </button>
       </div>
 
-      <div className="p-3 space-y-3 border-b border-zinc-200">
+      <div ref={splitRef} className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 border-b border-zinc-200">
         <div className="flex items-center gap-2 text-sm">
           <select
             className="rounded-lg bg-white border border-zinc-300 px-2 py-1 text-sm outline-none"
@@ -238,7 +244,13 @@ export default function TicketPanel() {
         )}
       </div>
 
-      <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div {...splitHandleProps} title="Drag to resize" />
+
+      <div
+        ref={logRef}
+        style={{ height: logHeight }}
+        className="shrink-0 max-h-[70%] overflow-y-auto p-3 space-y-2"
+      >
         {(ticket.log ?? []).length === 0 && (
           <p className="text-xs text-zinc-400">No activity yet.</p>
         )}
@@ -282,9 +294,10 @@ export default function TicketPanel() {
           }
         })}
       </div>
+      </div>
 
       {canChat && (
-        <div className="p-3 border-t border-zinc-200">
+        <div className="shrink-0 p-3 border-t border-zinc-200">
           <ChatInput
             value={feedback}
             onChange={setFeedback}
