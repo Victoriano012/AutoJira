@@ -473,7 +473,7 @@ export default function BoardView() {
               <div className="shrink-0 px-2 pb-2">
                 {parent.status !== "done" ? (
                   <button
-                    className="w-full rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+                    className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-2 py-2.5 text-sm font-semibold text-white hover:border-emerald-500 hover:bg-emerald-500"
                     title="Mark this human-review ticket complete — no issues remaining"
                     onClick={() =>
                       updateTicket(parentPath, parent.id, (t) => ({
@@ -486,7 +486,7 @@ export default function BoardView() {
                   </button>
                 ) : (
                   <button
-                    className="w-full cursor-pointer rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 shadow-sm transition-colors hover:border-violet-400 hover:text-violet-600"
+                    className="w-full cursor-pointer rounded-full border border-zinc-300 bg-white px-2 py-2.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-violet-400 hover:text-violet-600"
                     title="Reopen this human-review ticket"
                     onClick={() =>
                       updateTicket(parentPath, parent.id, (t) => ({
