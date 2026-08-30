@@ -551,30 +551,40 @@ export default function BoardView() {
         className="flex shrink-0 items-center gap-2"
         style={{ margin: `0 ${frameInset}px ${frameInset}px` }}
       >
-        <input
-          className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500"
-          placeholder="What should be changed? Press Enter — AI will turn it into tickets and get to work"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submitRequest();
-          }}
-        />
+        <div className="relative min-w-0 flex-1">
+          <input
+            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-10 text-sm outline-none focus:border-zinc-500"
+            placeholder="What should be changed? AI will turn it into tickets and get to work"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitRequest();
+            }}
+          />
+          <button
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40"
+            onClick={submitRequest}
+            disabled={!draft.trim()}
+            title="Send — AI will turn it into tickets"
+          >
+            ↑
+          </button>
+        </div>
         {running ? (
           <button
-            className="shrink-0 rounded-lg bg-red-100 px-4 py-2 text-sm text-red-700 hover:bg-red-200"
+            className="shrink-0 rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700 hover:bg-red-200"
             title="Stop all agents on this board"
             onClick={() => stopGraph(path)}
           >
-            ◼ Stop
+            ◼
           </button>
         ) : (
           <button
-            className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-500"
+            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500"
             title="Run all ready tickets on this board"
             onClick={() => void runGraph(path)}
           >
-            ▶ Play
+            ▶
           </button>
         )}
       </div>
