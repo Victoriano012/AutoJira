@@ -12,10 +12,16 @@ import {
 } from "./types";
 
 interface AppState {
+  /** Server id of the open project; null = show the project picker. */
+  projectId: string | null;
+  /** True once the open project's data has been fetched from the server. */
+  projectLoaded: boolean;
   project: Project;
   path: string[]; // ticket ids from root to the currently open subgraph
   selectedId: string | null;
 
+  openProject: (id: string, project: Project) => void;
+  closeProject: () => void;
   setProject: (p: Partial<Project>) => void;
   setPath: (path: string[]) => void;
   select: (id: string | null) => void;
@@ -49,6 +55,8 @@ function rewriteAt(
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
+      projectId: null,
+      projectLoaded: false,
       project: {
         name: "Untitled project",
         description: "",
@@ -59,6 +67,9 @@ export const useStore = create<AppState>()(
       path: [],
       selectedId: null,
 
+      openProject: (id, project) =>
+        set({ projectId: id, projectLoaded: true, project, path: [], selectedId: null }),
+      closeProject: () => set({ projectId: null, projectLoaded: false, path: [], selectedId: null }),
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
       setPath: (path) => set({ path, selectedId: null }),
       select: (id) => set({ selectedId: id }),
@@ -140,6 +151,10 @@ export const useStore = create<AppState>()(
           },
         })),
     }),
-    { name: "autojira-project" }
+    {
+      name: "autojira-project",
+      // Project data lives on the server; only remember which project is open.
+      partialize: (s) => ({ projectId: s.projectId }),
+    }
   )
 );

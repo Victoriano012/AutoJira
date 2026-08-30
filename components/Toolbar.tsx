@@ -9,6 +9,7 @@ import PopulateModal from "./PopulateModal";
 
 export default function Toolbar() {
   const project = useStore((s) => s.project);
+  const closeProject = useStore((s) => s.closeProject);
   const path = useStore((s) => s.path);
   const setProject = useStore((s) => s.setProject);
   const setPath = useStore((s) => s.setPath);
@@ -58,6 +59,13 @@ export default function Toolbar() {
 
   return (
     <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
+      <button
+        className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900"
+        onClick={closeProject}
+        title="Back to your projects"
+      >
+        ← Projects
+      </button>
       {path.length === 0 ? (
         <input
           className="bg-transparent font-semibold outline-none rounded px-1 focus:bg-zinc-100 min-w-0 w-56"
@@ -151,6 +159,12 @@ export default function Toolbar() {
           onChange={(e) => setProject({ workspaceDir: e.target.value })}
           title="Directory on the server where the agent works"
         />
+        <a
+          className="shrink-0 text-xs text-zinc-400 hover:text-zinc-700"
+          href="/api/auth/signout"
+        >
+          Sign out
+        </a>
       </div>
 
       {showPopulate && <PopulateModal onClose={() => setShowPopulate(false)} />}
