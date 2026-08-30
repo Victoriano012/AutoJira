@@ -2,14 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutGraph } from "@/lib/layout";
-import {
-  approveTicket,
-  isGraphRunning,
-  rejectTicket,
-  runGraph,
-  runTicket,
-  stopGraph,
-} from "@/lib/runner";
+import { approveTicket, rejectTicket, runGraph, runTicket } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import {
   contextChain,
@@ -93,12 +86,6 @@ export default function BoardView() {
   const { select, updateGraph, updateTicket } = useStore.getState();
 
   const graph = graphAtPath(project.graph, path);
-
-  const [running, setRunning] = useState(() => isGraphRunning(path));
-  useEffect(() => {
-    const iv = setInterval(() => setRunning(isGraphRunning(path)), 500);
-    return () => clearInterval(iv);
-  }, [path]);
 
   // ---- bottom-bar change requests (one Claude conversation per board) ----
   const [requests, setRequests] = useState<PendingRequest[]>([]);
@@ -570,23 +557,6 @@ export default function BoardView() {
             ↑
           </button>
         </div>
-        {running ? (
-          <button
-            className="shrink-0 rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700 hover:bg-red-200"
-            title="Stop all agents on this board"
-            onClick={() => stopGraph(path)}
-          >
-            ◼
-          </button>
-        ) : (
-          <button
-            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500"
-            title="Run all ready tickets on this board"
-            onClick={() => void runGraph(path)}
-          >
-            ▶
-          </button>
-        )}
       </div>
     </div>
   );
