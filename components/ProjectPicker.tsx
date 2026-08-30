@@ -172,10 +172,6 @@ function DeleteModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold">Remove “{name}”?</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Hiding removes it from this view only — nothing on disk is deleted, and
-          importing the folder again brings it back.
-        </p>
         <div className="mt-4 flex items-center gap-2">
           <button
             autoFocus
@@ -183,14 +179,14 @@ function DeleteModal({
             disabled={busy}
             onClick={() => void del("hide")}
           >
-            Hide from meta-graph
+            Delete
           </button>
           <button
             className="rounded-lg px-3 py-1.5 text-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
             disabled={busy}
             onClick={() => setConfirmErase(true)}
           >
-            Erase from computer…
+            Delete from computer
           </button>
           <button
             className="ml-auto rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
