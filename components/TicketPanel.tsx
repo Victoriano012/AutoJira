@@ -269,7 +269,7 @@ export default function TicketPanel() {
               return (
                 <p
                   key={i}
-                  className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm text-zinc-700 whitespace-pre-wrap shadow-inner"
+                  className="rounded-lg bg-zinc-50 px-3 py-2 font-mono text-sm text-zinc-700 whitespace-pre-wrap shadow-inner"
                 >
                   <span className="text-zinc-400">&gt; </span>
                   {entry.text}
