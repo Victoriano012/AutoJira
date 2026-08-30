@@ -224,8 +224,8 @@ export default function TicketPanel() {
             </p>
             <p className="mt-1 text-xs text-amber-700/80">
               {ticket.blocking === false
-                ? "Non-blocking: dependent tickets continue on a separate git branch while you review. Send feedback below or approve."
-                : "Test the result, send feedback below, or approve to unblock dependent tickets."}
+                ? "Non-blocking: dependent tickets continue on a separate git branch while you review. Ask the AI for changes below, or approve."
+                : "Test the result, ask the AI for changes below, or approve to unblock dependent tickets."}
             </p>
             <button
               className="mt-2 rounded-lg px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-400 text-white font-medium"
@@ -236,13 +236,6 @@ export default function TicketPanel() {
           </div>
         )}
       </div>
-
-      {ticket.resultSummary && (
-        <div className="mx-3 mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-sm text-zinc-700 max-h-40 overflow-y-auto">
-          <p className="text-xs text-zinc-500 mb-1">Latest result</p>
-          <p className="whitespace-pre-wrap">{ticket.resultSummary}</p>
-        </div>
-      )}
 
       <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {ticket.log.length === 0 && (
@@ -286,23 +279,26 @@ export default function TicketPanel() {
 
       {canChat && (
         <div className="p-3 border-t border-zinc-200">
-          <textarea
-            className="w-full rounded-lg bg-white border border-zinc-300 p-2 text-sm outline-none focus:border-zinc-500"
-            rows={2}
-            placeholder="Give the AI feedback on this ticket…"
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
-            }}
-          />
-          <button
-            className="mt-1 rounded-lg px-3 py-1.5 text-sm bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50"
-            onClick={send}
-            disabled={!feedback.trim()}
-          >
-            Send feedback
-          </button>
+          <div className="relative">
+            <textarea
+              className="w-full rounded-lg bg-white border border-zinc-300 p-2 pr-10 text-sm outline-none focus:border-zinc-500"
+              rows={2}
+              placeholder="Tell the AI what to change…"
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+              }}
+            />
+            <button
+              className="absolute right-2 bottom-3 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40"
+              onClick={send}
+              disabled={!feedback.trim()}
+              title="Send — the AI picks the ticket back up right away"
+            >
+              ↑
+            </button>
+          </div>
         </div>
       )}
 
