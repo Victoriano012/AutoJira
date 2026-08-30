@@ -128,21 +128,21 @@ export default function Toolbar() {
 
       <div className="ml-auto shrink-0 flex items-center gap-2">
         <button
-          className="rounded-lg p-2 bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={handleAutoLayout}
           title="Auto-layout"
         >
           <LayoutIcon />
         </button>
         <button
-          className="rounded-lg p-2 bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={handleAddTicket}
           title="New ticket"
         >
           <PlusIcon />
         </button>
         <button
-          className="rounded-lg p-2 text-xl leading-none bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-2 py-1.5 text-xl leading-none hover:bg-zinc-200"
           onClick={() => setShowPopulate(true)}
           title="Populate with AI"
         >
@@ -150,7 +150,7 @@ export default function Toolbar() {
         </button>
         {running ? (
           <button
-            className="rounded-lg p-2 bg-red-100 hover:bg-red-200 text-red-700"
+            className="rounded-lg px-2 py-1.5 text-red-600 hover:bg-zinc-200 hover:text-red-500"
             onClick={() => stopGraph(path)}
             title="Stop the run"
           >
@@ -158,7 +158,7 @@ export default function Toolbar() {
           </button>
         ) : (
           <button
-            className="rounded-lg p-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+            className="rounded-lg px-2 py-1.5 text-emerald-600 hover:bg-zinc-200 hover:text-emerald-500 disabled:opacity-50"
             onClick={() => void runGraph(path)}
             disabled={total === 0}
             title="Run graph"
@@ -190,7 +190,7 @@ export default function Toolbar() {
               : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           }`}
           onClick={toggleChat}
-          title="Chat with this level's main agent"
+          title="Chat"
         >
           ✦
         </button>
