@@ -27,22 +27,6 @@ const borderByStatus: Record<TicketStatus, string> = {
   error: "border-red-500",
 };
 
-const statusLabel: Record<TicketStatus, string> = {
-  todo: "To do",
-  running: "Running",
-  review: "Needs review",
-  done: "Done",
-  error: "Failed",
-};
-
-const statusText: Record<TicketStatus, string> = {
-  todo: "text-zinc-500",
-  running: "text-blue-500",
-  review: "text-amber-500",
-  done: "text-emerald-600",
-  error: "text-red-500",
-};
-
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
   if (isTicketDone(t)) return "#aad4b1";
@@ -100,7 +84,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   // subgraph stays "running" while its scheduler drives it, even once every
   // agent inside has stopped and only the human can move things on.
   const running = isTicketRunning(ticket);
-  const waiting = isTicketWaiting(ticket) && ticket.status !== "error";
+  const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
@@ -207,29 +191,19 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
           </button>
         ) : (
           // Waiting: play only — no spinner, no stop, since nothing is running.
-          <span
-            className={`flex items-center gap-2 text-[10px] ${
-              waiting ? statusText.review : statusText[ticket.status]
-            }`}
-          >
-            {waiting && ticket.status !== "review"
-              ? "Waiting"
-              : statusLabel[ticket.status]}
-            {(waiting ||
-              ticket.status === "review" ||
-              ticket.status === "error") && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  run();
-                }}
-                title="Run"
-                className="text-sm leading-none text-emerald-600 hover:text-emerald-500"
-              >
-                ▶
-              </button>
-            )}
-          </span>
+          // The border colour carries the state, so no word is printed here.
+          (waiting || ticket.status === "review" || ticket.status === "error") && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                run();
+              }}
+              title="Run"
+              className="text-sm leading-none text-emerald-600 hover:text-emerald-500"
+            >
+              ▶
+            </button>
+          )
         )}
       </div>
     </div>

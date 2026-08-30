@@ -211,27 +211,26 @@ export function isTicketRunning(t: Ticket): boolean {
   return t.status === "running";
 }
 
-/** Waiting on a human, not actually running.
- * - A leaf human ticket is Waiting while it awaits the person (status review).
+/** Waiting on a human, not actually running: the graph is blocked here and
+ * only a person can move it on. `depsSatisfied` says whether everything this
+ * ticket depends on is satisfied in its containing graph — a ticket still
+ * blocked on an unmet dependency is not waiting on anyone, it just has not
+ * started.
+ * - A leaf human ticket is Waiting whatever status the runner left on it.
  * - A human ticket with a board is Running only while some card is genuinely
  *   running in the Working column; otherwise, with not everything Done, it is
  *   Waiting for the human to complete it.
- * - Any ticket whose subtickets are all done, blocked on an unmet dependency,
- *   or themselves Waiting is itself Waiting. */
-export function isTicketWaiting(t: Ticket): boolean {
-  if (isTicketDone(t) || isTicketRunning(t)) return false;
+ * - Any other ticket is Waiting only when something inside it is itself
+ *   Waiting; subtickets merely blocked on dependencies do not count. */
+export function isTicketWaiting(t: Ticket, depsSatisfied: boolean): boolean {
+  if (isTicketDone(t) || isTicketRunning(t) || !depsSatisfied) return false;
   const g = t.subgraph;
-  // Not done and nothing inside to run: an unfinished human ticket is waiting
-  // on its person whatever status the runner left on it.
   if (g.tickets.length === 0) return t.type === "human_review";
   // Nothing is genuinely running inside (checked above), so an unfinished
   // board is waiting on its human.
   if (t.type === "human_review") return true;
-  return g.tickets.every(
-    (s) =>
-      isTicketDone(s) ||
-      !dependenciesOf(g, s.id).every(satisfiesDependents) ||
-      isTicketWaiting(s)
+  return g.tickets.some((s) =>
+    isTicketWaiting(s, dependenciesOf(g, s.id).every(satisfiesDependents))
   );
 }
 

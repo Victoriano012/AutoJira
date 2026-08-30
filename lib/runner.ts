@@ -283,6 +283,11 @@ export async function runTicket(path: string[], ticketId: string): Promise<void>
       ...t,
       status: t.subgraph.tickets.every(isTicketDone) ? "done" : "todo",
     }));
+  } else if (ticket.type === "human_review") {
+    // A human ticket with no board has nothing for an agent to do: it is a
+    // gate, so running it just hands it to the person. (Their own messages
+    // still open a session — that goes through sendFeedback.)
+    updateTicket(path, ticketId, (t) => ({ ...t, status: "review" }));
   } else {
     await runLeafTicket(path, ticketId);
   }
