@@ -51,6 +51,8 @@ export interface Project {
   workspaceDir: string; // where the agent works; empty = server temp dir
   /** Project-wide context files, inherited by every ticket. */
   attachments?: Attachment[];
+  /** Where this project's node sits on the meta-graph (project picker). */
+  metaPosition?: { x: number; y: number };
   graph: TicketGraph;
 }
 

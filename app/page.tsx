@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useSyncExternalStore } from "react";
-import ProjectPicker from "@/components/ProjectPicker";
 import TicketPanel from "@/components/TicketPanel";
 import Toolbar from "@/components/Toolbar";
 import { useStore } from "@/lib/store";
@@ -12,6 +11,7 @@ const GraphCanvas = dynamic(
   () => import("@/components/GraphCanvas").then((m) => m.GraphCanvas),
   { ssr: false }
 );
+const ProjectPicker = dynamic(() => import("@/components/ProjectPicker"), { ssr: false });
 
 const emptySubscribe = () => () => {};
 
@@ -58,13 +58,14 @@ export default function Home() {
       <div className="flex-1 flex min-h-0">
         <main className="flex-1 relative min-w-0">
           <GraphCanvas />
-          {/* One nested outline per subgraph level — purely decorative depth cue. */}
-          {Array.from({ length: depth }, (_, i) => (
+          {/* One nested outline per level — the open project itself counts as
+              one level of the meta-graph, so root shows a single frame. */}
+          {Array.from({ length: depth + 1 }, (_, i) => (
             <div
               key={i}
               aria-hidden
               className={`pointer-events-none absolute z-10 rounded-lg border ${
-                i === depth - 1 ? "border-zinc-400" : "border-zinc-300"
+                i === depth ? "border-zinc-400" : "border-zinc-300"
               }`}
               style={{ inset: 3 + i * 4 }}
             />

@@ -12,6 +12,7 @@ export interface ProjectRow {
   id: string; // absolute workspace path
   name: string;
   updated_at: string;
+  metaPosition?: { x: number; y: number };
 }
 
 const projectFile = (dir: string) => path.join(dir, ".autojira", "project.json");
@@ -49,6 +50,7 @@ function row(dir: string): ProjectRow | null {
     id: dir,
     name: p.name,
     updated_at: fs.statSync(projectFile(dir)).mtime.toISOString(),
+    metaPosition: p.metaPosition,
   };
 }
 

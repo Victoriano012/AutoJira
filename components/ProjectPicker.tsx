@@ -1,35 +1,72 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createProject, deleteProject, importProject, openProject } from "@/lib/sync";
+import {
+  createProject,
+  deleteProject,
+  importProject,
+  openProject,
+  saveMetaPosition,
+} from "@/lib/sync";
+import {
+  applyNodeChanges,
+  Background,
+  BackgroundVariant,
+  Controls,
+  ReactFlow,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  type NodeTypes,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { memo, useCallback, useEffect, useState } from "react";
 
-interface Row {
-  id: string;
-  name: string;
-  updated_at: string;
+type ProjectNodeType = Node<{ name: string; onDelete: () => void }, "project">;
+
+function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
+  return (
+    <div className="group relative w-64 rounded-xl border-2 border-zinc-300 bg-white p-3 shadow-lg shadow-zinc-900/10 hover:border-violet-400">
+      <div className="truncate pr-5 text-sm font-semibold text-zinc-900" title={data.name}>
+        {data.name}
+      </div>
+      <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
+        {id}
+      </div>
+      <button
+        className="absolute right-2 top-2 text-zinc-300 opacity-0 hover:text-red-500 group-hover:opacity-100"
+        title="Remove project (deletes only its .autojira folder, your files stay)"
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onDelete();
+        }}
+      >
+        🗑
+      </button>
+    </div>
+  );
 }
 
-export default function ProjectPicker() {
-  const [projects, setProjects] = useState<Row[] | null>(null);
+const ProjectNode = memo(ProjectNodeInner);
+const nodeTypes: NodeTypes = { project: ProjectNode };
+
+function ProjectModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [importPath, setImportPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
-    const res = await fetch("/api/projects");
-    if (res.ok) setProjects((await res.json()).projects);
-  }
   useEffect(() => {
-    void refresh();
-  }, []);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function run(fn: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await fn();
+      await fn(); // on success the project opens and this view unmounts
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -38,46 +75,21 @@ export default function ProjectPicker() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="w-full max-w-md rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Your projects</h2>
-        <div className="mt-3 space-y-1">
-          {projects === null && <p className="text-sm text-zinc-500">Loading…</p>}
-          {projects?.length === 0 && (
-            <p className="text-sm text-zinc-500">No projects yet — create or import one below.</p>
-          )}
-          {projects?.map((p) => (
-            <div
-              key={p.id}
-              className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100"
-            >
-              <button
-                className="flex-1 min-w-0 truncate text-left text-sm font-medium"
-                title={p.id}
-                onClick={() => void openProject(p.id)}
-              >
-                {p.name}
-              </button>
-              <span className="shrink-0 text-[10px] text-zinc-400">
-                {new Date(p.updated_at).toLocaleDateString()}
-              </span>
-              <button
-                className="shrink-0 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                title="Remove project (deletes only its .autojira folder, your files stay)"
-                onClick={async () => {
-                  if (confirm(`Remove “${p.name}”? Only its .autojira data is deleted — the folder and your files stay.`)) {
-                    await deleteProject(p.id);
-                    void refresh();
-                  }
-                }}
-              >
-                🗑
-              </button>
-            </div>
-          ))}
-        </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">New project</h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          Create one by name, or import an existing folder.
+        </p>
         <div className="mt-4 flex gap-2">
           <input
+            autoFocus
             className="flex-1 rounded-lg bg-zinc-50 border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-zinc-500"
             placeholder="New project name"
             value={name}
@@ -115,6 +127,97 @@ export default function ProjectPicker() {
         </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
+    </div>
+  );
+}
+
+export default function ProjectPicker() {
+  const [nodes, setNodes] = useState<ProjectNodeType[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const handleDelete = useCallback(async (id: string, name: string) => {
+    if (
+      !confirm(
+        `Remove “${name}”? Only its .autojira data is deleted — the folder and your files stay.`
+      )
+    )
+      return;
+    await deleteProject(id);
+    setNodes((nds) => nds.filter((n) => n.id !== id));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const res = await fetch("/api/projects");
+    if (!res.ok) return;
+    const rows: {
+      id: string;
+      name: string;
+      metaPosition?: { x: number; y: number };
+    }[] = (await res.json()).projects;
+    setNodes(
+      rows.map((r, i) => ({
+        id: r.id,
+        type: "project" as const,
+        position: r.metaPosition ?? { x: (i % 3) * 300, y: Math.floor(i / 3) * 140 },
+        data: { name: r.name, onDelete: () => void handleDelete(r.id, r.name) },
+      }))
+    );
+    setLoaded(true);
+  }, [handleDelete]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange<ProjectNodeType>[]) =>
+      setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <header className="h-12 shrink-0 flex items-center px-4 bg-white border-b border-zinc-200">
+        <span className="font-semibold">Projects</span>
+        <button
+          className="ml-auto rounded-lg px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white"
+          onClick={() => setShowModal(true)}
+        >
+          + Project
+        </button>
+      </header>
+      <div className="relative flex-1 min-h-0">
+        {loaded ? (
+          <ReactFlow
+            nodes={nodes}
+            nodeTypes={nodeTypes}
+            colorMode="light"
+            fitView
+            fitViewOptions={{ maxZoom: 1 }}
+            proOptions={{ hideAttribution: true }}
+            nodesConnectable={false}
+            deleteKeyCode={null}
+            zoomOnDoubleClick={false}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={(_, node) => void saveMetaPosition(node.id, node.position)}
+            onNodeDoubleClick={(_, node) => void openProject(node.id)}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
+            <Controls />
+          </ReactFlow>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+            Loading…
+          </div>
+        )}
+        {loaded && nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
+            No projects yet — click “+ Project” to create or import one
+          </div>
+        )}
+      </div>
+      {showModal && <ProjectModal onClose={() => setShowModal(false)} />}
     </div>
   );
 }

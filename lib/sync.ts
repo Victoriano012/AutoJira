@@ -28,6 +28,22 @@ export async function openProject(id: string): Promise<void> {
   useStore.getState().openProject(id, row.data);
 }
 
+/** Persist where a project's node sits on the meta-graph (project picker). */
+export async function saveMetaPosition(
+  id: string,
+  pos: { x: number; y: number }
+): Promise<void> {
+  const url = `/api/projects/${encodeURIComponent(id)}`;
+  const res = await fetch(url);
+  if (!res.ok) return;
+  const row = await res.json();
+  await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: { ...row.data, metaPosition: pos } }),
+  });
+}
+
 export async function deleteProject(id: string): Promise<void> {
   await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
