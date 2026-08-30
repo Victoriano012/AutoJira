@@ -19,12 +19,14 @@ interface AppState {
   project: Project;
   path: string[]; // ticket ids from root to the currently open subgraph
   selectedId: string | null;
+  chatOpen: boolean;
 
   openProject: (id: string, project: Project) => void;
   closeProject: () => void;
   setProject: (p: Partial<Project>) => void;
   setPath: (path: string[]) => void;
   select: (id: string | null) => void;
+  toggleChat: () => void;
 
   /** Immutably rewrite the graph at `path`. */
   updateGraph: (path: string[], fn: (g: TicketGraph) => TicketGraph) => void;
@@ -66,6 +68,7 @@ export const useStore = create<AppState>()(
       },
       path: [],
       selectedId: null,
+      chatOpen: false,
 
       openProject: (id, project) =>
         set({ projectId: id, projectLoaded: true, project, path: [], selectedId: null }),
@@ -73,6 +76,7 @@ export const useStore = create<AppState>()(
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
       setPath: (path) => set({ path, selectedId: null }),
       select: (id) => set({ selectedId: id }),
+      toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
 
       updateGraph: (path, fn) =>
         set((s) => ({

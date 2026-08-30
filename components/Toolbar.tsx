@@ -16,6 +16,8 @@ export default function Toolbar() {
   const setPath = useStore((s) => s.setPath);
   const select = useStore((s) => s.select);
   const addTicket = useStore((s) => s.addTicket);
+  const chatOpen = useStore((s) => s.chatOpen);
+  const toggleChat = useStore((s) => s.toggleChat);
   const updateTicket = useStore((s) => s.updateTicket);
 
   const [showPopulate, setShowPopulate] = useState(false);
@@ -187,6 +189,17 @@ export default function Toolbar() {
             )}
           </button>
         )}
+        <button
+          className={`rounded-lg px-2 py-1.5 text-base leading-tight ${
+            chatOpen
+              ? "bg-zinc-200 text-zinc-900"
+              : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          }`}
+          onClick={toggleChat}
+          title="Chat with an agent about this project"
+        >
+          💬
+        </button>
         <button
           className="rounded-lg px-2 py-1.5 text-base leading-tight text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}

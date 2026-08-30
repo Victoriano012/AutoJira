@@ -48,6 +48,11 @@ export interface TicketGraph {
   edges: GraphEdge[];
 }
 
+export interface ChatMessage {
+  role: "user" | "agent";
+  text: string;
+}
+
 export interface Project {
   name: string;
   description: string;
@@ -58,6 +63,9 @@ export interface Project {
   metaPosition?: { x: number; y: number };
   /** Hidden from the meta-graph; importing the folder again clears it. */
   hidden?: boolean;
+  /** Project chat: an agent with graph context working in the workspace dir. */
+  chatSessionId?: string;
+  chat?: ChatMessage[];
   graph: TicketGraph;
 }
 

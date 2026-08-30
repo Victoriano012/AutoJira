@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useSyncExternalStore } from "react";
 import BoardView from "@/components/BoardView";
+import ChatPanel from "@/components/ChatPanel";
 import TicketPanel from "@/components/TicketPanel";
 import Toolbar from "@/components/Toolbar";
 import { useStore } from "@/lib/store";
@@ -85,6 +86,7 @@ export default function Home() {
           ))}
         </main>
         <TicketPanel />
+        <ChatPanel />
       </div>
     </div>
   );
