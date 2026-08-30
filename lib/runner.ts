@@ -198,7 +198,11 @@ export async function sendFeedback(
   updateTicket(path, ticketId, (t) => ({ ...t, status: "running" }));
 
   const { ok, text, aborted } = await streamAgent(path, ticketId, {
-    prompt: `Human review feedback on your work for this ticket:\n\n${message}\n\nAddress the feedback, then end with a short summary of what you changed.`,
+    // With no session the ticket never ran, so this is the human opening the
+    // work rather than reacting to it.
+    prompt: ticket.sessionId
+      ? `Human review feedback on your work for this ticket:\n\n${message}\n\nAddress the feedback, then end with a short summary of what you changed.`
+      : `${buildPrompt(path, ticket)}\n\nThe human is starting this ticket with a request:\n\n${message}`,
     sessionId: ticket.sessionId,
   });
 
