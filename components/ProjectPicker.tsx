@@ -55,7 +55,20 @@ function ProjectModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [importPath, setImportPath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function browse() {
+    if (picking) return;
+    setPicking(true);
+    try {
+      const res = await fetch("/api/pick-folder", { method: "POST" });
+      const data = await res.json();
+      if (data.path) setImportPath(data.path);
+    } finally {
+      setPicking(false);
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -119,6 +132,14 @@ function ProjectModal({ onClose }: { onClose: () => void }) {
                 void run(() => importProject(importPath.trim()));
             }}
           />
+          <button
+            className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300 disabled:opacity-50"
+            disabled={picking}
+            title="Pick a folder with Finder"
+            onClick={() => void browse()}
+          >
+            {picking ? "Choosing…" : "Browse…"}
+          </button>
           <button
             className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300 disabled:opacity-50"
             disabled={!importPath.trim() || busy}
