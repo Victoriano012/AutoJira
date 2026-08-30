@@ -12,6 +12,7 @@ import ChatInput from "./ChatInput";
 import { usePanelResize } from "@/lib/useResizable";
 import {
   dependenciesOf,
+  dependentsOf,
   graphAtPath,
   isTicketDone,
   TicketStatus,
@@ -53,6 +54,7 @@ export default function TicketPanel() {
   if (!graph || !ticket) return null;
 
   const deps = dependenciesOf(graph, ticket.id);
+  const dependents = dependentsOf(graph, ticket.id);
   const runLabel = ticket.subgraph.tickets.length > 0 ? "Run subgraph" : "Run";
   const canChat =
     !!ticket.sessionId &&
@@ -201,6 +203,17 @@ export default function TicketPanel() {
           <div className="text-xs text-zinc-600">
             <span className="text-sm font-medium text-zinc-700">Depends on</span>
             {deps.map((d) => (
+              <div key={d.id} className="ml-1">
+                {isTicketDone(d) ? "✓" : "○"} {d.title}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {dependents.length > 0 && (
+          <div className="text-xs text-zinc-600">
+            <span className="text-sm font-medium text-zinc-700">Required by</span>
+            {dependents.map((d) => (
               <div key={d.id} className="ml-1">
                 {isTicketDone(d) ? "✓" : "○"} {d.title}
               </div>

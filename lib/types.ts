@@ -176,6 +176,12 @@ export function dependenciesOf(graph: TicketGraph, ticketId: string): Ticket[] {
   return graph.tickets.filter((t) => depIds.includes(t.id));
 }
 
+/** The reverse of dependenciesOf: tickets that depend on this one. */
+export function dependentsOf(graph: TicketGraph, ticketId: string): Ticket[] {
+  const depIds = graph.edges.filter((e) => e.source === ticketId).map((e) => e.target);
+  return graph.tickets.filter((t) => depIds.includes(t.id));
+}
+
 /** A ticket is effectively done when its own status is done AND, if it has a
  * subgraph, every ticket inside is done too. */
 export function isTicketDone(t: Ticket): boolean {
