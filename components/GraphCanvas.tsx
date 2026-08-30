@@ -117,14 +117,15 @@ export function GraphCanvas() {
   const storeEdges: Edge[] = useMemo(() => {
     if (!graph) return [];
     return graph.edges.map((e) => {
-      const target = graph.tickets.find((t) => t.id === e.target);
+      const source = graph.tickets.find((t) => t.id === e.source);
+      const passed = source !== undefined && satisfiesDependents(source);
+      const color = passed ? "#34a26a" : "#a1a1aa";
       return {
         id: e.id,
         source: e.source,
         target: e.target,
-        animated: target?.status === "running",
-        style: { stroke: "#a1a1aa", strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#a1a1aa" },
+        style: { stroke: color, strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color },
       };
     });
   }, [graph]);
