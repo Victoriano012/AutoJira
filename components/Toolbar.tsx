@@ -8,6 +8,7 @@ import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
 import ArrowLeftIcon from "./ArrowLeftIcon";
 import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
+import { LayoutIcon, PlayIcon, PlusIcon, StopIcon } from "./icons";
 import PopulateModal from "./PopulateModal";
 import SettingsModal from "./SettingsModal";
 
@@ -127,38 +128,42 @@ export default function Toolbar() {
 
       <div className="ml-auto shrink-0 flex items-center gap-2">
         <button
-          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg p-2 bg-zinc-200 hover:bg-zinc-300"
           onClick={handleAutoLayout}
           title="Auto-layout"
         >
-          ⌗
+          <LayoutIcon />
         </button>
         <button
-          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg p-2 bg-zinc-200 hover:bg-zinc-300"
           onClick={handleAddTicket}
+          title="New ticket"
         >
-          + Ticket
+          <PlusIcon />
         </button>
         <button
-          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg p-2 text-xl leading-none bg-zinc-200 hover:bg-zinc-300"
           onClick={() => setShowPopulate(true)}
+          title="Populate with AI"
         >
-          ✨ Populate with AI
+          ✨
         </button>
         {running ? (
           <button
-            className="rounded-lg px-4 py-1.5 text-base leading-tight bg-red-100 hover:bg-red-200 text-red-700"
+            className="rounded-lg p-2 bg-red-100 hover:bg-red-200 text-red-700"
             onClick={() => stopGraph(path)}
+            title="Stop the run"
           >
-            ◼ Stop
+            <StopIcon />
           </button>
         ) : (
           <button
-            className="rounded-lg px-4 py-1.5 text-base leading-tight bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+            className="rounded-lg p-2 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
             onClick={() => void runGraph(path)}
             disabled={total === 0}
+            title="Run graph"
           >
-            ▶ Run graph
+            <PlayIcon />
           </button>
         )}
         {running && (
