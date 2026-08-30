@@ -216,8 +216,10 @@ export async function runTicket(path: string[], ticketId: string): Promise<void>
 
 /**
  * Run every ticket in the graph at `path`, respecting dependency edges.
- * Stops branches at human-review tickets until they are approved; approving
- * resumes the run automatically.
+ * All ready tickets run in parallel, each in its own agent session; whenever
+ * one finishes, newly-unblocked tickets are started. Stops branches at
+ * human-review tickets until they are approved; approving resumes the run
+ * automatically.
  */
 export async function runGraph(path: string[]): Promise<void> {
   const k = pathKey(path);
@@ -225,21 +227,39 @@ export async function runGraph(path: string[]): Promise<void> {
   if (loopRunning.has(k)) return; // a scheduler loop is already draining this graph
   loopRunning.add(k);
 
+  const inFlight = new Map<string, Promise<void>>(); // ticket ids currently running
+
   try {
     for (;;) {
-      if (!activeGraphRuns.has(k)) break; // stopped by user
-      const g = graphAtPath(useStore.getState().project.graph, path);
-      if (!g) break;
-      const ready = g.tickets.filter((t) => {
-        if (isTicketDone(t)) return false;
-        if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
-        // Parents are ready only while something inside can actually progress.
-        if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
-        return t.status === "todo";
-      });
-      if (ready.length === 0) break;
-      // Sequential on purpose: every ticket works in the same workspace.
-      await runTicket(path, ready[0].id);
+      // Start everything currently ready (unless the user stopped the run).
+      if (activeGraphRuns.has(k)) {
+        const g = graphAtPath(useStore.getState().project.graph, path);
+        if (!g) break;
+        const ready = g.tickets.filter((t) => {
+          if (inFlight.has(t.id) || isTicketDone(t)) return false;
+          if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
+          // Parents are ready only while something inside can actually progress.
+          if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
+          return t.status === "todo";
+        });
+        for (const t of ready) {
+          inFlight.set(
+            t.id,
+            runTicket(path, t.id)
+              .catch((err) =>
+                useStore.getState().appendLog(path, t.id, {
+                  kind: "error",
+                  text: String(err),
+                  ts: Date.now(),
+                })
+              )
+              .finally(() => inFlight.delete(t.id))
+          );
+        }
+      }
+      if (inFlight.size === 0) break;
+      // Wake when any ticket finishes, then recompute the ready set.
+      await Promise.race(inFlight.values());
     }
   } finally {
     loopRunning.delete(k);
