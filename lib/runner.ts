@@ -338,11 +338,29 @@ export async function runGraph(path: string[]): Promise<void> {
   }
 }
 
+/** True while an actual agent request is open at or beneath this ticket. */
+function liveBeneath(path: string[], t: Ticket): boolean {
+  if (controllers.has(ticketKey(path, t.id))) return true;
+  return t.subgraph.tickets.some((c) => liveBeneath([...path, t.id], c));
+}
+
+/** A zombie "running" — a persisted status whose browser-side run died with a
+ * reload — has nothing to abort and nothing that will ever write a final
+ * status, so settle it back to todo. Live runs settle themselves after the
+ * abort (and must not be reset here: a todo leaf would make the parent's
+ * scheduler consider it runnable again and restart it). */
+function settleZombie(path: string[], ticketId: string): void {
+  const t = ticketAtPath(useStore.getState().project.graph, path, ticketId);
+  if (t && t.status === "running" && !liveBeneath(path, t))
+    useStore.getState().updateTicket(path, ticketId, (x) => ({ ...x, status: "todo" }));
+}
+
 export function stopTicket(path: string[], ticketId: string): void {
   controllers.get(ticketKey(path, ticketId))?.abort();
-  // A ticket with a subgraph runs as a graph run underneath, not a controller.
   const t = ticketAtPath(useStore.getState().project.graph, path, ticketId);
+  // A ticket with a subgraph runs as a graph run underneath, not a controller.
   if (t && t.subgraph.tickets.length > 0) stopGraph([...path, ticketId]);
+  settleZombie(path, ticketId);
 }
 
 export function stopGraph(path: string[]): void {
@@ -351,6 +369,7 @@ export function stopGraph(path: string[]): void {
   for (const t of g?.tickets ?? []) {
     controllers.get(ticketKey(path, t.id))?.abort();
     if (t.subgraph.tickets.length > 0) stopGraph([...path, t.id]);
+    settleZombie(path, t.id);
   }
 }
 
