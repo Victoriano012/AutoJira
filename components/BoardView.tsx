@@ -466,11 +466,12 @@ export default function BoardView() {
                   )}
                 </div>
               ))}
+            </div>
 
-              {/* resolve/reopen this human-review ticket itself */}
-              {col.id === "done" &&
-                parent &&
-                (parent.status !== "done" ? (
+            {/* pinned column footer — resolve/reopen this human-review ticket */}
+            {col.id === "done" && parent && (
+              <div className="shrink-0 px-2 pb-2">
+                {parent.status !== "done" ? (
                   <button
                     className="w-full rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
                     title="Mark this human-review ticket complete — no issues remaining"
@@ -496,8 +497,9 @@ export default function BoardView() {
                   >
                     Reopen
                   </button>
-                ))}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
 
