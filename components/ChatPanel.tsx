@@ -130,7 +130,7 @@ export default function ChatPanel() {
           m.role === "user" ? (
             <p
               key={i}
-              className="bg-zinc-50 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap shadow-inner"
+              className="bg-zinc-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap"
             >
               <span className="text-zinc-400">&gt; </span>
               {m.text}
