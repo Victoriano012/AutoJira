@@ -15,6 +15,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
+import TrashIcon from "./TrashIcon";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -86,7 +87,7 @@ export default function TicketPanel() {
           }
         />
         <button
-          className="text-zinc-400 hover:text-red-500"
+          className="text-[#d64545] hover:text-red-700"
           title="Delete ticket"
           onClick={() => {
             if (confirm(`Delete ticket “${ticket.title}”?`)) {
@@ -94,7 +95,7 @@ export default function TicketPanel() {
             }
           }}
         >
-          🗑
+          <TrashIcon />
         </button>
         <button
           className="text-zinc-400 hover:text-zinc-700"
@@ -126,12 +127,12 @@ export default function TicketPanel() {
           <span className="ml-auto flex gap-1">
             {ticket.status !== "done" ? (
               <button
-                className="rounded px-2 py-1 text-xs bg-zinc-200 hover:bg-zinc-300"
+                className="rounded-full border border-emerald-600 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-600 hover:text-white"
                 onClick={() =>
                   updateTicket(path, ticket.id, (t) => ({ ...t, status: "done" }))
                 }
               >
-                Mark done
+                ✓ Mark done
               </button>
             ) : (
               <button
