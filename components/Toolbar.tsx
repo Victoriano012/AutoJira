@@ -58,7 +58,7 @@ export default function Toolbar() {
   }
 
   return (
-    <header className="h-20 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
+    <header className="h-16 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
       <button
         className="shrink-0 text-base text-zinc-500 hover:text-zinc-900"
         onClick={closeProject}
@@ -103,27 +103,27 @@ export default function Toolbar() {
 
       <div className="flex items-center gap-2 ml-2">
         <button
-          className="rounded-lg px-4 py-2.5 text-base bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
           onClick={handleAddTicket}
         >
           + Ticket
         </button>
         <button
-          className="rounded-lg px-4 py-2.5 text-base bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
           onClick={() => setShowPopulate(true)}
         >
           ✨ Populate with AI
         </button>
         {running ? (
           <button
-            className="rounded-lg px-4 py-2.5 text-base bg-red-100 hover:bg-red-200 text-red-700"
+            className="rounded-lg px-4 py-1.5 text-base leading-tight bg-red-100 hover:bg-red-200 text-red-700"
             onClick={() => stopGraph(path)}
           >
             ◼ Stop
           </button>
         ) : (
           <button
-            className="rounded-lg px-4 py-2.5 text-base bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+            className="rounded-lg px-4 py-1.5 text-base leading-tight bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
             onClick={() => void runGraph(path)}
             disabled={total === 0}
           >
@@ -134,7 +134,7 @@ export default function Toolbar() {
           <span className="text-sm text-emerald-600 animate-pulse">running…</span>
         )}
         <button
-          className="rounded-lg px-4 py-2.5 text-base bg-zinc-200 hover:bg-zinc-300"
+          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
           onClick={handleAutoLayout}
           title="Auto-layout"
         >
@@ -145,7 +145,7 @@ export default function Toolbar() {
       <div className="ml-auto flex items-center gap-3">
         {total > 0 && (
           <span
-            className={`text-sm rounded-full px-3 py-1.5 border ${
+            className={`text-sm rounded-full px-3 py-1 border ${
               doneCount === total
                 ? "border-emerald-500 text-emerald-600"
                 : "border-zinc-300 text-zinc-500"
@@ -155,7 +155,7 @@ export default function Toolbar() {
           </span>
         )}
         <input
-          className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-2 text-sm font-mono outline-none focus:border-zinc-500"
+          className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono outline-none focus:border-zinc-500"
           placeholder="Workspace dir (server path, empty = temp)"
           value={project.workspaceDir}
           onChange={(e) => setProject({ workspaceDir: e.target.value })}
