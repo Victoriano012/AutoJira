@@ -69,13 +69,13 @@ export default function Toolbar() {
       </button>
       {path.length === 0 ? (
         <input
-          className="bg-transparent text-lg font-semibold outline-none rounded px-1 focus:bg-zinc-100 w-64 shrink-0"
+          className="bg-transparent text-lg font-semibold outline-none rounded px-1 focus:bg-zinc-100 flex-1 min-w-40"
           value={project.name}
           onChange={(e) => setProject({ name: e.target.value })}
           aria-label="Project name"
         />
       ) : (
-        <nav className="flex items-center gap-1 text-base font-medium w-64 shrink-0 overflow-hidden">
+        <nav className="flex items-center gap-1 text-base font-medium flex-1 min-w-40 overflow-hidden">
           <button
             className="text-zinc-500 hover:text-zinc-900 shrink-0"
             onClick={() => setPath([])}
@@ -102,7 +102,14 @@ export default function Toolbar() {
         </nav>
       )}
 
-      <div className="flex items-center gap-2 ml-2">
+      <div className="ml-auto shrink-0 flex items-center gap-2">
+        <button
+          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
+          onClick={handleAutoLayout}
+          title="Auto-layout"
+        >
+          ⌗
+        </button>
         <button
           className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
           onClick={handleAddTicket}
@@ -134,16 +141,9 @@ export default function Toolbar() {
         {running && (
           <span className="text-sm text-emerald-600 animate-pulse">running…</span>
         )}
-        <button
-          className="rounded-lg px-4 py-1.5 text-base leading-tight bg-zinc-200 hover:bg-zinc-300"
-          onClick={handleAutoLayout}
-          title="Auto-layout"
-        >
-          ⌗
-        </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="shrink-0 flex items-center gap-3">
         {total > 0 && (
           <span
             className={`text-sm rounded-full px-3 py-1 border ${
