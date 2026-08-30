@@ -1,4 +1,4 @@
-import { deleteProject, readProject, writeProject } from "@/lib/projects-fs";
+import { eraseProject, hideProject, readProject, writeProject } from "@/lib/projects-fs";
 import { Project } from "@/lib/types";
 
 // id = URL-encoded absolute path of the workspace folder
@@ -21,8 +21,13 @@ export async function PUT(req: Request, ctx: Ctx) {
   return Response.json({ ok: true });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
+/** ?mode=hide (default) hides from the meta-graph; ?mode=erase deletes the
+ * whole workspace folder from disk. */
+export async function DELETE(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  deleteProject(decodeURIComponent(id));
+  const dir = decodeURIComponent(id);
+  const mode = new URL(req.url).searchParams.get("mode");
+  if (mode === "erase") eraseProject(dir);
+  else hideProject(dir);
   return Response.json({ ok: true });
 }

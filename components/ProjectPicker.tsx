@@ -20,6 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 import TrashIcon from "./TrashIcon";
 
 type ProjectNodeType = Node<{ name: string; onDelete: () => void }, "project">;
@@ -35,7 +36,7 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
       </div>
       <button
         className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
-        title="Remove project (deletes only its .autojira folder, your files stay)"
+        title="Remove project (hide from this view, or erase from the computer)"
         onClick={(e) => {
           e.stopPropagation();
           data.onDelete();
@@ -132,21 +133,94 @@ function ProjectModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function DeleteModal({
+  id,
+  name,
+  onClose,
+  onDone,
+}: {
+  id: string;
+  name: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [confirmErase, setConfirmErase] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !confirmErase) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, confirmErase]);
+
+  async function del(mode: "hide" | "erase") {
+    if (busy) return;
+    setBusy(true);
+    await deleteProject(id, mode);
+    onDone();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">Remove “{name}”?</h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          Hiding removes it from this view only — nothing on disk is deleted, and
+          importing the folder again brings it back.
+        </p>
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            autoFocus
+            className="rounded-lg px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
+            disabled={busy}
+            onClick={() => void del("hide")}
+          >
+            Hide from meta-graph
+          </button>
+          <button
+            className="rounded-lg px-3 py-1.5 text-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+            disabled={busy}
+            onClick={() => setConfirmErase(true)}
+          >
+            Erase from computer…
+          </button>
+          <button
+            className="ml-auto rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+      {confirmErase && (
+        <ConfirmDialog
+          title="Erase from computer?"
+          message={`The folder\n${id}\nand everything inside it will be permanently deleted. This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => void del("erase")}
+          onCancel={() => setConfirmErase(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function ProjectPicker() {
   const [nodes, setNodes] = useState<ProjectNodeType[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showModal, setShowModal] = useState(false);
-
-  const handleDelete = useCallback(async (id: string, name: string) => {
-    if (
-      !confirm(
-        `Remove “${name}”? Only its .autojira data is deleted — the folder and your files stay.`
-      )
-    )
-      return;
-    await deleteProject(id);
-    setNodes((nds) => nds.filter((n) => n.id !== id));
-  }, []);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(
+    null
+  );
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/projects");
@@ -161,11 +235,11 @@ export default function ProjectPicker() {
         id: r.id,
         type: "project" as const,
         position: r.metaPosition ?? { x: (i % 3) * 300, y: Math.floor(i / 3) * 140 },
-        data: { name: r.name, onDelete: () => void handleDelete(r.id, r.name) },
+        data: { name: r.name, onDelete: () => setPendingDelete({ id: r.id, name: r.name }) },
       }))
     );
     setLoaded(true);
-  }, [handleDelete]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -219,6 +293,17 @@ export default function ProjectPicker() {
         )}
       </div>
       {showModal && <ProjectModal onClose={() => setShowModal(false)} />}
+      {pendingDelete && (
+        <DeleteModal
+          id={pendingDelete.id}
+          name={pendingDelete.name}
+          onClose={() => setPendingDelete(null)}
+          onDone={() => {
+            setNodes((nds) => nds.filter((n) => n.id !== pendingDelete.id));
+            setPendingDelete(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -44,8 +44,15 @@ export async function saveMetaPosition(
   });
 }
 
-export async function deleteProject(id: string): Promise<void> {
-  await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
+/** "hide" (default) only removes the project from the meta-graph;
+ * "erase" permanently deletes its whole folder from the computer. */
+export async function deleteProject(
+  id: string,
+  mode: "hide" | "erase" = "hide"
+): Promise<void> {
+  await fetch(`/api/projects/${encodeURIComponent(id)}?mode=${mode}`, {
+    method: "DELETE",
+  });
 }
 
 // ---- autosave ----------------------------------------------------------

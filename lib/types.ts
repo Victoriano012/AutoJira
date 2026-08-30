@@ -53,6 +53,8 @@ export interface Project {
   attachments?: Attachment[];
   /** Where this project's node sits on the meta-graph (project picker). */
   metaPosition?: { x: number; y: number };
+  /** Hidden from the meta-graph; importing the folder again clears it. */
+  hidden?: boolean;
   graph: TicketGraph;
 }
 

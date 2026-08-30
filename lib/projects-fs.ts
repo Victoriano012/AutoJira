@@ -60,6 +60,7 @@ export function listProjects(): ProjectRow[] {
     for (const name of fs.readdirSync(BASE)) dirs.add(path.join(BASE, name));
   }
   return [...dirs]
+    .filter((dir) => !readProject(dir)?.hidden)
     .map(row)
     .filter((r): r is ProjectRow => r !== null)
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -73,21 +74,31 @@ export function createProject(name: string): ProjectRow {
   return row(dir)!;
 }
 
-/** Any folder works: adopts an existing .autojira, creates one otherwise. */
+/** Any folder works: adopts an existing .autojira, creates one otherwise.
+ * Re-importing a hidden project brings it back onto the meta-graph. */
 export function importProject(rawPath: string): ProjectRow {
   const dir = path.resolve(rawPath.replace(/^~(?=\/|$)/, os.homedir()));
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
     throw new Error(`Not a directory: ${dir}`);
   }
-  if (!readProject(dir)) {
+  const existing = readProject(dir);
+  if (!existing) {
     writeProject(dir, defaultProject(path.basename(dir), dir));
+  } else if (existing.hidden) {
+    writeProject(dir, { ...existing, hidden: undefined });
   }
   if (path.dirname(dir) !== BASE) writeRegistry([...readRegistry(), dir]);
   return row(dir)!;
 }
 
-/** Forgets the project (removes .autojira); never touches the user's code. */
-export function deleteProject(dir: string) {
-  fs.rmSync(path.join(dir, ".autojira"), { recursive: true, force: true });
+/** Hides the project from the meta-graph; nothing on disk is deleted. */
+export function hideProject(dir: string) {
+  const p = readProject(dir);
+  if (p) writeProject(dir, { ...p, hidden: true });
+}
+
+/** Permanently deletes the whole workspace folder from the computer. */
+export function eraseProject(dir: string) {
+  fs.rmSync(dir, { recursive: true, force: true });
   writeRegistry(readRegistry().filter((p) => p !== dir));
 }
