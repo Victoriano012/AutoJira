@@ -324,8 +324,48 @@ export default function BoardView() {
     else cardRefs.current.delete(id);
   };
 
+  // The board's own ticket — the human-review ticket this window belongs to.
+  const parentPath = path.slice(0, -1);
+  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
+
   return (
     <div className="flex h-full w-full flex-col">
+      {/* board header — resolve/reopen this human-review ticket itself */}
+      {parent && (
+        <div
+          className="flex shrink-0 items-center justify-end"
+          style={{ padding: `${frameInset}px ${frameInset}px 0` }}
+        >
+          {parent.status !== "done" ? (
+            <button
+              className="rounded-full border border-emerald-600 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-600 hover:text-white"
+              title="Mark this human-review ticket complete — no issues remaining"
+              onClick={() =>
+                updateTicket(parentPath, parent.id, (t) => ({
+                  ...t,
+                  status: "done",
+                }))
+              }
+            >
+              ✓ Mark resolved
+            </button>
+          ) : (
+            <button
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 shadow-sm transition-colors hover:border-violet-400 hover:text-violet-600"
+              title="Reopen this human-review ticket"
+              onClick={() =>
+                updateTicket(parentPath, parent.id, (t) => ({
+                  ...t,
+                  status: "todo",
+                }))
+              }
+            >
+              Reopen
+            </button>
+          )}
+        </div>
+      )}
+
       {/* columns */}
       <div
         ref={boardRef}
