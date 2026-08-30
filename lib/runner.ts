@@ -16,6 +16,11 @@ import {
 const controllers = new Map<string, AbortController>();
 const activeGraphRuns = new Set<string>(); // graph paths currently auto-running
 const loopRunning = new Set<string>(); // prevents duplicate scheduler loops
+// Tickets the user stopped: an active parent scheduler must not immediately
+// restart them (their aborted work settles back to todo, which would
+// otherwise look runnable again). Cleared by running the ticket again or by
+// a fresh graph run at its level.
+const userStopped = new Set<string>();
 
 const pathKey = (path: string[]) => path.join("/") || "(root)";
 const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
@@ -76,7 +81,7 @@ async function streamAgent(
     sessionId?: string;
     attachments?: { name: string; dataUrl: string }[];
   }
-): Promise<{ ok: boolean; text: string; sessionId?: string }> {
+): Promise<{ ok: boolean; text: string; sessionId?: string; aborted: boolean }> {
   const { project, appendLog, updateTicket } = useStore.getState();
   const ctrl = new AbortController();
   controllers.set(ticketKey(path, ticketId), ctrl);
@@ -131,12 +136,17 @@ async function streamAgent(
     }
   } catch (err) {
     ok = false;
+    // A user stop is not a failure: log it as info, not error.
     finalText = ctrl.signal.aborted ? "Stopped by user" : String(err);
-    appendLog(path, ticketId, { kind: "error", text: finalText, ts: Date.now() });
+    appendLog(path, ticketId, {
+      kind: ctrl.signal.aborted ? "info" : "error",
+      text: finalText,
+      ts: Date.now(),
+    });
   } finally {
     controllers.delete(ticketKey(path, ticketId));
   }
-  return { ok, text: finalText, sessionId };
+  return { ok, text: finalText, sessionId, aborted: ctrl.signal.aborted };
 }
 
 /** Run one leaf ticket (no subgraph) with the agent. */
@@ -148,7 +158,7 @@ async function runLeafTicket(path: string[], ticketId: string): Promise<void> {
   updateTicket(path, ticketId, (t) => ({ ...t, status: "running" }));
   appendLog(path, ticketId, { kind: "info", text: "Run started", ts: Date.now() });
 
-  const { ok, text } = await streamAgent(path, ticketId, {
+  const { ok, text, aborted } = await streamAgent(path, ticketId, {
     prompt: buildPrompt(path, ticket),
     attachments: inheritedAttachments(path, ticket).map(({ name, dataUrl }) => ({
       name,
@@ -159,14 +169,18 @@ async function runLeafTicket(path: string[], ticketId: string): Promise<void> {
   const summary = text.length > 1500 ? text.slice(0, 1500) + "…" : text;
   // Skip the final write if something else already moved the ticket out of
   // "running" (e.g. a board rejection reset it to todo while aborting).
+  // A user stop is not a failure: the ticket goes back to todo, and "error"
+  // stays reserved for runs where the agent actually failed.
   updateTicket(path, ticketId, (t) =>
     t.status !== "running"
       ? t
-      : {
-          ...t,
-          status: !ok ? "error" : t.type === "human_review" ? "review" : "done",
-          resultSummary: summary,
-        }
+      : aborted
+        ? { ...t, status: "todo" }
+        : {
+            ...t,
+            status: !ok ? "error" : t.type === "human_review" ? "review" : "done",
+            resultSummary: summary,
+          }
   );
 }
 
@@ -183,19 +197,22 @@ export async function sendFeedback(
   appendLog(path, ticketId, { kind: "user", text: message, ts: Date.now() });
   updateTicket(path, ticketId, (t) => ({ ...t, status: "running" }));
 
-  const { ok, text } = await streamAgent(path, ticketId, {
+  const { ok, text, aborted } = await streamAgent(path, ticketId, {
     prompt: `Human review feedback on your work for this ticket:\n\n${message}\n\nAddress the feedback, then end with a short summary of what you changed.`,
     sessionId: ticket.sessionId,
   });
 
+  // Stopped feedback is not a failure: the earlier work still awaits review.
   updateTicket(path, ticketId, (t) =>
     t.status !== "running"
       ? t
-      : {
-          ...t,
-          status: ok ? "review" : "error",
-          resultSummary: text.length > 1500 ? text.slice(0, 1500) + "…" : text,
-        }
+      : aborted
+        ? { ...t, status: "review" }
+        : {
+            ...t,
+            status: ok ? "review" : "error",
+            resultSummary: text.length > 1500 ? text.slice(0, 1500) + "…" : text,
+          }
   );
 }
 
@@ -231,7 +248,7 @@ export async function rejectTicket(
       // todo first: the aborted run's final write then sees a non-running
       // status and leaves the reset in place.
       updateTicket(path, id, (x) => ({ ...x, status: "todo" }));
-      stopTicket(path, id);
+      abortRun(path, id);
     }
   }
 
@@ -250,6 +267,7 @@ export function approveTicket(path: string[], ticketId: string): void {
 
 /** Run a ticket: leaf tickets go to the agent, tickets with a subgraph run the subgraph. */
 export async function runTicket(path: string[], ticketId: string): Promise<void> {
+  userStopped.delete(ticketKey(path, ticketId));
   const { project, updateTicket } = useStore.getState();
   const ticket = ticketAtPath(project.graph, path, ticketId);
   if (!ticket) return;
@@ -275,6 +293,11 @@ export async function runTicket(path: string[], ticketId: string): Promise<void>
  */
 export async function runGraph(path: string[]): Promise<void> {
   const k = pathKey(path);
+  // A fresh run at this level (not a resume of an active one) lifts the
+  // user-stopped skip from this level's tickets.
+  if (!activeGraphRuns.has(k))
+    for (const key of [...userStopped])
+      if (key.startsWith(k + "#")) userStopped.delete(key);
   activeGraphRuns.add(k);
   if (loopRunning.has(k)) return; // a scheduler loop is already draining this graph
   loopRunning.add(k);
@@ -289,6 +312,7 @@ export async function runGraph(path: string[]): Promise<void> {
         if (!g) break;
         const ready = g.tickets.filter((t) => {
           if (inFlight.has(t.id) || isTicketDone(t)) return false;
+          if (userStopped.has(ticketKey(path, t.id))) return false;
           if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
           // Parents are ready only while something inside can actually progress.
           if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
@@ -355,12 +379,19 @@ function settleZombie(path: string[], ticketId: string): void {
     useStore.getState().updateTicket(path, ticketId, (x) => ({ ...x, status: "todo" }));
 }
 
-export function stopTicket(path: string[], ticketId: string): void {
+/** Abort a ticket's run (and its subgraph's) without marking it user-stopped;
+ * rejectTicket uses this so the rejected work is free to re-run right away. */
+function abortRun(path: string[], ticketId: string): void {
   controllers.get(ticketKey(path, ticketId))?.abort();
   const t = ticketAtPath(useStore.getState().project.graph, path, ticketId);
   // A ticket with a subgraph runs as a graph run underneath, not a controller.
   if (t && t.subgraph.tickets.length > 0) stopGraph([...path, ticketId]);
   settleZombie(path, ticketId);
+}
+
+export function stopTicket(path: string[], ticketId: string): void {
+  userStopped.add(ticketKey(path, ticketId));
+  abortRun(path, ticketId);
 }
 
 export function stopGraph(path: string[]): void {
