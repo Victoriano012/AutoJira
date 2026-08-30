@@ -21,6 +21,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
+import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
 type ProjectNodeType = Node<{ name: string; onDelete: () => void }, "project">;
@@ -237,6 +238,7 @@ export default function ProjectPicker() {
   const [nodes, setNodes] = useState<ProjectNodeType[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(
     null
   );
@@ -280,6 +282,13 @@ export default function ProjectPicker() {
         >
           + Project
         </button>
+        <button
+          className="rounded-lg px-2 py-1.5 text-base leading-tight text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+        >
+          ⚙
+        </button>
       </header>
       <div className="relative flex-1 min-h-0">
         {loaded ? (
@@ -312,6 +321,7 @@ export default function ProjectPicker() {
         )}
       </div>
       {showModal && <ProjectModal onClose={() => setShowModal(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {pendingDelete && (
         <DeleteModal
           id={pendingDelete.id}

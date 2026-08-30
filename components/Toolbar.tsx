@@ -6,6 +6,7 @@ import { isGraphRunning, runGraph, stopGraph } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
 import PopulateModal from "./PopulateModal";
+import SettingsModal from "./SettingsModal";
 
 export default function Toolbar() {
   const project = useStore((s) => s.project);
@@ -20,6 +21,7 @@ export default function Toolbar() {
   const [showPopulate, setShowPopulate] = useState(false);
   const [running, setRunning] = useState(false);
   const [editingDir, setEditingDir] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const iv = setInterval(() => setRunning(isGraphRunning(path)), 500);
@@ -185,9 +187,17 @@ export default function Toolbar() {
             )}
           </button>
         )}
+        <button
+          className="rounded-lg px-2 py-1.5 text-base leading-tight text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+        >
+          ⚙
+        </button>
       </div>
 
       {showPopulate && <PopulateModal onClose={() => setShowPopulate(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </header>
   );
 }

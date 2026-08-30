@@ -1,4 +1,5 @@
 import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
+import { modelOption } from "@/lib/config";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           maxTurns: 150,
+          ...modelOption(),
           ...(sessionId ? { resume: sessionId } : {}),
         },
       });
