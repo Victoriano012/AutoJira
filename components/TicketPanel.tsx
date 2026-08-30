@@ -264,8 +264,12 @@ export default function TicketPanel() {
               );
             case "user":
               return (
-                <p key={i} className="font-mono text-sm text-sky-700 whitespace-pre-wrap">
-                  You: {entry.text}
+                <p
+                  key={i}
+                  className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm text-zinc-700 whitespace-pre-wrap shadow-inner"
+                >
+                  <span className="text-zinc-400">&gt; </span>
+                  {entry.text}
                 </p>
               );
             case "error":
