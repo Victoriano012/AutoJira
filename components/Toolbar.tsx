@@ -68,16 +68,17 @@ export default function Toolbar() {
       </button>
       {path.length === 0 ? (
         <input
-          className="bg-transparent font-semibold outline-none rounded px-1 focus:bg-zinc-100 min-w-0 w-56"
+          className="bg-transparent font-semibold outline-none rounded px-1 focus:bg-zinc-100 w-56 shrink-0"
           value={project.name}
           onChange={(e) => setProject({ name: e.target.value })}
           aria-label="Project name"
         />
       ) : (
-        <nav className="flex items-center gap-1 text-sm font-medium min-w-0 overflow-hidden">
+        <nav className="flex items-center gap-1 text-sm font-medium w-56 shrink-0 overflow-hidden">
           <button
             className="text-zinc-500 hover:text-zinc-900 shrink-0"
             onClick={() => setPath([])}
+            title={project.name}
           >
             {project.name}
           </button>
@@ -85,11 +86,12 @@ export default function Toolbar() {
             <span key={c.id} className="flex items-center gap-1 min-w-0">
               <span className="text-zinc-400">/</span>
               {i === crumbs.length - 1 ? (
-                <span className="truncate">{c.title}</span>
+                <span className="truncate" title={c.title}>{c.title}</span>
               ) : (
                 <button
                   className="text-zinc-500 hover:text-zinc-900 truncate"
                   onClick={() => setPath(path.slice(0, i + 1))}
+                  title={c.title}
                 >
                   {c.title}
                 </button>
