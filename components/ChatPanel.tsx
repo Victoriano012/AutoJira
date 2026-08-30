@@ -134,7 +134,7 @@ export default function ChatPanel() {
       className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
     >
       <div {...handleProps} title="Drag to resize" />
-      <div className="shrink-0 flex items-center gap-2 p-3 border-b border-zinc-200">
+      <div className="shrink-0 flex items-center gap-2 p-3">
         {ticket ? (
           <TicketDetailsHeader ticket={ticket} path={parentPath}>
             {closeButton}
@@ -150,7 +150,7 @@ export default function ChatPanel() {
       </div>
 
       <div ref={splitRef} className="flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 border-b border-zinc-200">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {ticket ? (
             <TicketDetails ticket={ticket} path={parentPath} />
           ) : (

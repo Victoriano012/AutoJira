@@ -56,7 +56,7 @@ export default function TicketPanel() {
       className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
     >
       <div {...handleProps} title="Drag to resize" />
-      <div className="shrink-0 flex items-center gap-2 p-3 border-b border-zinc-200">
+      <div className="shrink-0 flex items-center gap-2 p-3">
         <TicketDetailsHeader ticket={ticket} path={path}>
           <button
             className="text-[#d64545] hover:text-red-700"
@@ -76,7 +76,7 @@ export default function TicketPanel() {
       </div>
 
       <div ref={splitRef} className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 border-b border-zinc-200">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         <TicketDetails ticket={ticket} path={path} />
       </div>
 
