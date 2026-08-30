@@ -6,6 +6,7 @@ import { isGraphRunning, runGraph, stopGraph } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
 import GearIcon from "./GearIcon";
+import HomeIcon from "./HomeIcon";
 import PopulateModal from "./PopulateModal";
 import SettingsModal from "./SettingsModal";
 
@@ -75,11 +76,18 @@ export default function Toolbar() {
   return (
     <header className="h-16 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
       <button
-        className="shrink-0 max-w-48 truncate text-base text-zinc-500 hover:text-zinc-900"
+        className="shrink-0 text-zinc-500 hover:text-zinc-900"
+        onClick={closeProject}
+        title="All projects"
+      >
+        <HomeIcon />
+      </button>
+      <button
+        className="shrink-0 text-base text-zinc-500 hover:text-zinc-900"
         onClick={goBack}
         title={path.length === 0 ? "Back to your projects" : `Back to ${backLabel}`}
       >
-        ← {backLabel}
+        ←
       </button>
       {path.length === 0 ? (
         <input
