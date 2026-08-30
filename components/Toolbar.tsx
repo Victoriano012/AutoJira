@@ -19,6 +19,7 @@ export default function Toolbar() {
 
   const [showPopulate, setShowPopulate] = useState(false);
   const [running, setRunning] = useState(false);
+  const [editingDir, setEditingDir] = useState(false);
 
   useEffect(() => {
     const iv = setInterval(() => setRunning(isGraphRunning(path)), 500);
@@ -154,13 +155,36 @@ export default function Toolbar() {
             {doneCount}/{total} done
           </span>
         )}
-        <input
-          className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono outline-none focus:border-zinc-500"
-          placeholder="Workspace dir (server path, empty = temp)"
-          value={project.workspaceDir}
-          onChange={(e) => setProject({ workspaceDir: e.target.value })}
-          title="Directory on the server where the agent works"
-        />
+        {editingDir ? (
+          <input
+            autoFocus
+            className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono outline-none focus:border-zinc-500"
+            placeholder="Workspace dir (server path, empty = temp)"
+            value={project.workspaceDir}
+            onChange={(e) => setProject({ workspaceDir: e.target.value })}
+            onBlur={() => setEditingDir(false)}
+            title="Directory on the server where the agent works"
+          />
+        ) : (
+          /* unfocused: left-truncated so the end of the path stays visible
+             (dir=rtl moves the ellipsis left; <bdi> keeps the path LTR) */
+          <button
+            className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono text-left cursor-text"
+            onClick={() => setEditingDir(true)}
+            onFocus={() => setEditingDir(true)}
+            title="Directory on the server where the agent works"
+          >
+            {project.workspaceDir ? (
+              <span dir="rtl" className="block truncate">
+                <bdi>{project.workspaceDir}</bdi>
+              </span>
+            ) : (
+              <span className="block truncate text-zinc-400">
+                Workspace dir (server path, empty = temp)
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {showPopulate && <PopulateModal onClose={() => setShowPopulate(false)} />}

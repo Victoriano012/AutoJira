@@ -31,8 +31,10 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
       <div className="truncate pr-5 text-sm font-semibold text-zinc-900" title={data.name}>
         {data.name}
       </div>
-      <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
-        {id}
+      {/* dir=rtl puts the ellipsis on the left, keeping the end of the path
+          visible; <bdi> keeps the LTR path itself from reordering */}
+      <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
+        <bdi>{id}</bdi>
       </div>
       <button
         className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
