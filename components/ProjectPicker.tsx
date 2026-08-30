@@ -21,6 +21,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
+import GearIcon from "./GearIcon";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
@@ -283,11 +284,11 @@ export default function ProjectPicker() {
           + Project
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-xl leading-none text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
-          ⚙
+          <GearIcon />
         </button>
       </header>
       <div className="relative flex-1 min-h-0">

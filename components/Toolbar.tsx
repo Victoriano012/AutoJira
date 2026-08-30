@@ -5,6 +5,7 @@ import { autoLayout } from "@/lib/layout";
 import { isGraphRunning, runGraph, stopGraph } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
+import GearIcon from "./GearIcon";
 import PopulateModal from "./PopulateModal";
 import SettingsModal from "./SettingsModal";
 
@@ -22,7 +23,6 @@ export default function Toolbar() {
 
   const [showPopulate, setShowPopulate] = useState(false);
   const [running, setRunning] = useState(false);
-  const [editingDir, setEditingDir] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -159,36 +159,6 @@ export default function Toolbar() {
             {doneCount}/{total} done
           </span>
         )}
-        {editingDir ? (
-          <input
-            autoFocus
-            className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono outline-none focus:border-zinc-500"
-            placeholder="Workspace dir (server path, empty = temp)"
-            value={project.workspaceDir}
-            onChange={(e) => setProject({ workspaceDir: e.target.value })}
-            onBlur={() => setEditingDir(false)}
-            title="Directory on the server where the agent works"
-          />
-        ) : (
-          /* unfocused: left-truncated so the end of the path stays visible
-             (dir=rtl moves the ellipsis left; <bdi> keeps the path LTR) */
-          <button
-            className="w-80 rounded-lg bg-white border border-zinc-300 px-3 py-1.5 text-sm font-mono text-left cursor-text"
-            onClick={() => setEditingDir(true)}
-            onFocus={() => setEditingDir(true)}
-            title="Directory on the server where the agent works"
-          >
-            {project.workspaceDir ? (
-              <span dir="rtl" className="block truncate">
-                <bdi>{project.workspaceDir}</bdi>
-              </span>
-            ) : (
-              <span className="block truncate text-zinc-400">
-                Workspace dir (server path, empty = temp)
-              </span>
-            )}
-          </button>
-        )}
         <button
           className={`rounded-lg px-2 py-1.5 text-xl leading-none ${
             chatOpen
@@ -201,11 +171,11 @@ export default function Toolbar() {
           ✦
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-xl leading-none text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
-          ⚙
+          <GearIcon />
         </button>
       </div>
 
