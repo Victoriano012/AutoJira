@@ -44,6 +44,16 @@ export default function Toolbar() {
     }
   }
 
+  // Where ← takes you: one layer up, or the meta-graph only from the root.
+  const backLabel =
+    path.length === 0
+      ? "Projects"
+      : path.length === 1
+        ? project.name
+        : (crumbs[path.length - 2]?.title ?? project.name);
+  const goBack = () =>
+    path.length === 0 ? closeProject() : setPath(path.slice(0, -1));
+
   const doneCount = graph?.tickets.filter(isTicketDone).length ?? 0;
   const total = graph?.tickets.length ?? 0;
 
@@ -65,11 +75,11 @@ export default function Toolbar() {
   return (
     <header className="h-16 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
       <button
-        className="shrink-0 text-base text-zinc-500 hover:text-zinc-900"
-        onClick={closeProject}
-        title="Back to your projects"
+        className="shrink-0 max-w-48 truncate text-base text-zinc-500 hover:text-zinc-900"
+        onClick={goBack}
+        title={path.length === 0 ? "Back to your projects" : `Back to ${backLabel}`}
       >
-        ← Projects
+        ← {backLabel}
       </button>
       {path.length === 0 ? (
         <input
