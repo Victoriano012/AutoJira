@@ -1,5 +1,6 @@
 "use client";
 
+import { isProjectRunning, runProject, stopProject } from "@/lib/projectRun";
 import {
   createProject,
   deleteProject,
@@ -25,11 +26,20 @@ import GearIcon from "./GearIcon";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
-type ProjectNodeType = Node<{ name: string; onDelete: () => void }, "project">;
+type ProjectNodeType = Node<
+  { name: string; running: boolean; onDelete: () => void },
+  "project"
+>;
 
 function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
   return (
-    <div className="group relative w-64 rounded-xl border-2 border-zinc-300 bg-white p-3 shadow-lg shadow-zinc-900/10 hover:border-violet-400">
+    <div
+      className={`group relative w-64 rounded-xl border-2 bg-white p-3 shadow-lg shadow-zinc-900/10 ${
+        data.running
+          ? "border-blue-400 animate-pulse"
+          : "border-zinc-300 hover:border-violet-400"
+      }`}
+    >
       <div className="truncate pr-5 text-sm font-semibold text-zinc-900" title={data.name}>
         {data.name}
       </div>
@@ -37,6 +47,34 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
           visible; <bdi> keeps the LTR path itself from reordering */}
       <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
         <bdi>{id}</bdi>
+      </div>
+      {/* Same run/stop controls a ticket node has — a project is just the
+          outermost ticket. */}
+      <div className="mt-1.5 flex justify-end">
+        {data.running ? (
+          <span className="flex items-center gap-1.5">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                stopProject(id);
+              }}
+              title="Stop"
+              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
+            />
+          </span>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void runProject(id);
+            }}
+            title="Run the whole project graph"
+            className="text-sm leading-none text-emerald-600 hover:text-emerald-500"
+          >
+            ▶
+          </button>
+        )}
       </div>
       <button
         className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
@@ -257,7 +295,11 @@ export default function ProjectPicker() {
         id: r.id,
         type: "project" as const,
         position: r.metaPosition ?? { x: (i % 3) * 300, y: Math.floor(i / 3) * 140 },
-        data: { name: r.name, onDelete: () => setPendingDelete({ id: r.id, name: r.name }) },
+        data: {
+          name: r.name,
+          running: isProjectRunning(r.id),
+          onDelete: () => setPendingDelete({ id: r.id, name: r.name }),
+        },
       }))
     );
     setLoaded(true);
@@ -266,6 +308,24 @@ export default function ProjectPicker() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Reflect an ongoing run (started from a node, still active after coming
+  // back to the picker) on its project node.
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setNodes((nds) => {
+        let changed = false;
+        const next = nds.map((n) => {
+          const running = isProjectRunning(n.id);
+          if (running === n.data.running) return n;
+          changed = true;
+          return { ...n, data: { ...n.data, running } };
+        });
+        return changed ? next : nds;
+      });
+    }, 500);
+    return () => clearInterval(iv);
+  }, []);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<ProjectNodeType>[]) =>
