@@ -75,8 +75,9 @@ export const useStore = create<AppState>()(
       closeProject: () => set({ projectId: null, projectLoaded: false, path: [], selectedId: null }),
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
       setPath: (path) => set({ path, selectedId: null }),
-      select: (id) => set({ selectedId: id }),
-      toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+      // The ticket panel and the chat drawer share the same space — only one open at a time.
+      select: (id) => set((s) => ({ selectedId: id, chatOpen: id === null ? s.chatOpen : false })),
+      toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen, selectedId: s.chatOpen ? s.selectedId : null })),
 
       updateGraph: (path, fn) =>
         set((s) => ({
