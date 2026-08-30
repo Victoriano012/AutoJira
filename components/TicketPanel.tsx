@@ -59,7 +59,7 @@ export default function TicketPanel() {
 
   const graph = graphAtPath(project.graph, path);
   const ticket = graph?.tickets.find((t) => t.id === selectedId) ?? null;
-  const logLength = ticket?.log.length ?? 0;
+  const logLength = ticket?.log?.length ?? 0;
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
@@ -246,10 +246,10 @@ export default function TicketPanel() {
       </div>
 
       <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {ticket.log.length === 0 && (
+        {(ticket.log ?? []).length === 0 && (
           <p className="text-xs text-zinc-400">No activity yet.</p>
         )}
-        {ticket.log.map((entry, i) => {
+        {(ticket.log ?? []).map((entry, i) => {
           switch (entry.kind) {
             case "tool":
               return (
