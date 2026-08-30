@@ -28,22 +28,6 @@ const statusColor: Record<TicketStatus, string> = {
   error: "bg-red-400",
 };
 
-const statusText: Record<TicketStatus, string> = {
-  todo: "To do",
-  running: "Running",
-  review: "Awaiting review",
-  done: "Done",
-  error: "Error",
-};
-
-const statusTextColor: Record<TicketStatus, string> = {
-  todo: "text-zinc-400",
-  running: "text-blue-400",
-  review: "text-amber-400",
-  done: "text-emerald-400",
-  error: "text-red-400",
-};
-
 export default function TicketPanel() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
@@ -127,9 +111,7 @@ export default function TicketPanel() {
             <option value="ai">🤖 AI</option>
             <option value="human_review">👤 Human review</option>
           </select>
-          <span className={statusTextColor[ticket.status]}>
-            {statusText[ticket.status]}
-          </span>
+          {/* No status label — the node border + dot already show the state. */}
           <span className="ml-auto flex gap-1">
             {ticket.status !== "done" ? (
               <button
@@ -142,7 +124,7 @@ export default function TicketPanel() {
               </button>
             ) : (
               <button
-                className="rounded px-2 py-1 text-xs bg-zinc-200 hover:bg-zinc-300"
+                className="cursor-pointer inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white hover:border-violet-400 hover:text-violet-600 px-2.5 py-1 font-medium text-zinc-600 shadow-sm transition-colors"
                 onClick={() =>
                   updateTicket(path, ticket.id, (t) => ({ ...t, status: "todo" }))
                 }
@@ -227,10 +209,7 @@ export default function TicketPanel() {
 
         {ticket.status === "review" && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-sm text-amber-700 font-medium">
-              Awaiting human review
-            </p>
-            <p className="mt-1 text-xs text-amber-700/80">
+            <p className="text-xs text-amber-700/80">
               {ticket.blocking === false
                 ? "Non-blocking: dependent tickets continue on a separate git branch while you review. Ask the AI for changes below, or approve."
                 : "Test the result, ask the AI for changes below, or approve to unblock dependent tickets."}
