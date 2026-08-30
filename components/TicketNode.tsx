@@ -5,6 +5,7 @@ import { runTicket, stopTicket } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import {
   isTicketDone,
+  isTicketRunning,
   isTicketWaiting,
   Ticket,
   TicketGraph,
@@ -20,7 +21,7 @@ export type TicketNodeType = Node<
 
 const borderByStatus: Record<TicketStatus, string> = {
   todo: "border-zinc-300",
-  running: "border-blue-400 animate-pulse",
+  running: "border-blue-400",
   review: "border-amber-400",
   done: "border-emerald-500",
   error: "border-red-500",
@@ -95,7 +96,11 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
 
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const { ticket, path, ready } = data;
-  const waiting = isTicketWaiting(ticket);
+  // The two states are derived, not read off the raw status: a ticket with a
+  // subgraph stays "running" while its scheduler drives it, even once every
+  // agent inside has stopped and only the human can move things on.
+  const running = isTicketRunning(ticket);
+  const waiting = isTicketWaiting(ticket) && ticket.status !== "error";
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
@@ -117,10 +122,12 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
         selected
-          ? "border-sky-400"
-          : waiting && ticket.status !== "error"
-            ? borderByStatus.review
-            : borderByStatus[ticket.status]
+          ? "border-violet-500"
+          : running
+            ? borderByStatus.running
+            : waiting
+              ? borderByStatus.review
+              : borderByStatus[ticket.status]
       }`}
     >
       <Handle type="target" position={Position.Left} className={handleClass} />
@@ -162,7 +169,20 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         {ticket.subgraph.tickets.length > 0 && (
           <SubgraphPreview graph={ticket.subgraph} />
         )}
-        {ticket.status === "todo" ? (
+        {running ? (
+          <span className="flex items-center gap-1.5">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                stopTicket(path, ticket.id);
+              }}
+              title="Stop"
+              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
+            />
+          </span>
+        ) : ticket.status === "todo" ? (
           <button
             disabled={!ready}
             onClick={(e) => {
@@ -178,25 +198,19 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
           >
             ▶
           </button>
-        ) : ticket.status === "running" ? (
-          <span className="flex items-center gap-1.5">
-            {!waiting && (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-            )}
-            {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                stopTicket(path, ticket.id);
-              }}
-              title="Stop"
-              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
-            />
-          </span>
         ) : (
-          <span className={`flex items-center gap-2 text-[10px] ${statusText[ticket.status]}`}>
-            {statusLabel[ticket.status]}
-            {(ticket.status === "review" || ticket.status === "error") && (
+          // Waiting: play only — no spinner, no stop, since nothing is running.
+          <span
+            className={`flex items-center gap-2 text-[10px] ${
+              waiting ? statusText.review : statusText[ticket.status]
+            }`}
+          >
+            {waiting && ticket.status !== "review"
+              ? "Waiting"
+              : statusLabel[ticket.status]}
+            {(waiting ||
+              ticket.status === "review" ||
+              ticket.status === "error") && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();

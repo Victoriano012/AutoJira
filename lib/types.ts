@@ -197,6 +197,15 @@ export function satisfiesDependents(t: Ticket): boolean {
   return t.type === "human_review" && t.blocking === false && t.status === "review";
 }
 
+/** An agent is genuinely at work at or beneath this ticket. A ticket with a
+ * subgraph carries "running" only as bookkeeping while its scheduler drives
+ * that subgraph (and keeps carrying it if the run dies with a reload), so what
+ * counts is whether a leaf inside is running — at any depth. */
+export function isTicketRunning(t: Ticket): boolean {
+  if (t.subgraph.tickets.length > 0) return t.subgraph.tickets.some(isTicketRunning);
+  return t.status === "running";
+}
+
 /** Waiting on a human, not actually running.
  * - A leaf human ticket is Waiting while it awaits the person (status review).
  * - A human ticket with a board is Running only while some card is genuinely
@@ -205,12 +214,13 @@ export function satisfiesDependents(t: Ticket): boolean {
  * - Any ticket whose subtickets are all done, blocked on an unmet dependency,
  *   or themselves Waiting is itself Waiting. */
 export function isTicketWaiting(t: Ticket): boolean {
-  if (isTicketDone(t)) return false;
+  if (isTicketDone(t) || isTicketRunning(t)) return false;
   const g = t.subgraph;
   if (g.tickets.length === 0)
     return t.type === "human_review" && t.status === "review";
-  if (t.type === "human_review")
-    return !g.tickets.some((s) => s.status === "running" && !isTicketWaiting(s));
+  // Nothing is genuinely running inside (checked above), so an unfinished
+  // board is waiting on its human.
+  if (t.type === "human_review") return true;
   return g.tickets.every(
     (s) =>
       isTicketDone(s) ||

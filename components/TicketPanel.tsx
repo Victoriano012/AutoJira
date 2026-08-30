@@ -15,6 +15,7 @@ import {
   dependentsOf,
   graphAtPath,
   isTicketDone,
+  isTicketRunning,
   TicketStatus,
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
@@ -89,7 +90,9 @@ export default function TicketPanel() {
             updateTicket(path, ticket.id, (t) => ({ ...t, title: e.target.value }))
           }
         />
-        {ticket.status === "running" ? (
+        {/* Stop belongs to the running state only: a parent still marked
+            "running" with nothing working inside is waiting, so it gets play. */}
+        {isTicketRunning(ticket) ? (
           <button
             className="shrink-0 text-red-600 hover:text-red-500"
             title="Stop"

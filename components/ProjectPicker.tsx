@@ -36,7 +36,7 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pt-1.5 shadow-lg shadow-zinc-900/10 ${
         data.running
-          ? "border-blue-400 animate-pulse"
+          ? "border-blue-400"
           : "border-zinc-300 hover:border-violet-400"
       }`}
     >

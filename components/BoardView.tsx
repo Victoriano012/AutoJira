@@ -357,7 +357,7 @@ export default function BoardView() {
                   onClick={() => select(t.id)}
                   className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
                     t.id === selectedId
-                      ? "border-sky-400"
+                      ? "border-violet-500"
                       : t.status === "error"
                         ? "border-red-300"
                         : "border-zinc-200"
