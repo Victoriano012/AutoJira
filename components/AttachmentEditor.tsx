@@ -52,7 +52,7 @@ export default function AttachmentEditor({
   return (
     <div className="text-xs">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-zinc-500">{label}</span>
+        <span className="text-sm font-medium text-zinc-700">{label}</span>
         <label className="cursor-pointer inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white hover:border-violet-400 hover:text-violet-600 px-2.5 py-1 font-medium text-zinc-600 shadow-sm transition-colors">
           <span className="text-sm leading-none">＋</span> Add file
           <input

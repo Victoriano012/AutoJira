@@ -15,6 +15,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
+import ConfirmDialog from "./ConfirmDialog";
 import TrashIcon from "./TrashIcon";
 
 const statusColor: Record<TicketStatus, string> = {
@@ -50,6 +51,7 @@ export default function TicketPanel() {
   const removeTicket = useStore((s) => s.removeTicket);
 
   const [feedback, setFeedback] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   const graph = graphAtPath(project.graph, path);
@@ -89,11 +91,7 @@ export default function TicketPanel() {
         <button
           className="text-[#d64545] hover:text-red-700"
           title="Delete ticket"
-          onClick={() => {
-            if (confirm(`Delete ticket “${ticket.title}”?`)) {
-              removeTicket(path, ticket.id);
-            }
-          }}
+          onClick={() => setConfirmDelete(true)}
         >
           <TrashIcon />
         </button>
@@ -192,7 +190,7 @@ export default function TicketPanel() {
 
         {deps.length > 0 && (
           <div className="text-xs text-zinc-600">
-            <span className="text-zinc-500">Depends on:</span>
+            <span className="text-sm font-medium text-zinc-700">Depends on</span>
             {deps.map((d) => (
               <div key={d.id} className="ml-1">
                 {isTicketDone(d) ? "✓" : "○"} {d.title}
@@ -306,6 +304,20 @@ export default function TicketPanel() {
             Send feedback
           </button>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete ticket?"
+          message={`“${ticket.title}” will be removed from the graph.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => {
+            setConfirmDelete(false);
+            removeTicket(path, ticket.id);
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </aside>
   );

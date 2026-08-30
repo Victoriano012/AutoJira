@@ -10,9 +10,11 @@ import {
   newTicket,
   Ticket,
   ticketAtPath,
+  TicketGraph,
   TicketType,
 } from "@/lib/types";
 import AttachmentEditor, { addFiles } from "./AttachmentEditor";
+import ConfirmDialog from "./ConfirmDialog";
 
 const PROGRESS_HINTS = [
   "Reading your description…",
@@ -50,6 +52,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [hint, setHint] = useState(0);
+  const [pendingGraph, setPendingGraph] = useState<TicketGraph | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Cycle through status hints while generating (the endpoint reports no
@@ -83,14 +86,20 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !pendingGraph) {
         abortRef.current?.abort();
         onClose();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, pendingGraph]);
+
+  function apply(graph: TicketGraph) {
+    updateGraph(path, () => graph);
+    if (atRoot) setProject({ description });
+    onClose();
+  }
 
   async function submit() {
     if (!description.trim() || loading) return;
@@ -146,17 +155,11 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
       for (const t of tickets) t.position = positions.get(t.id) ?? null;
 
       const existing = graphAtPath(project.graph, path);
-      if (
-        existing &&
-        existing.tickets.length > 0 &&
-        !confirm("Replace the current tickets in this graph?")
-      ) {
-        setLoading(false);
+      if (existing && existing.tickets.length > 0) {
+        setPendingGraph(graph); // ask before replacing what's there
         return;
       }
-      updateGraph(path, () => graph);
-      if (atRoot) setProject({ description });
-      onClose();
+      apply(graph);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setError(String(err instanceof Error ? err.message : err));
@@ -216,7 +219,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
             </div>
             <p className="mt-1 text-xs text-violet-700/70">
               The AI agent is building your ticket graph — this can take a
-              minute. Cancel or Escape to stop.
+              minute. Cancel to stop.
             </p>
           </div>
         )}
@@ -243,6 +246,16 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+      {pendingGraph && (
+        <ConfirmDialog
+          title="Replace current tickets?"
+          message="This graph already has tickets — they will all be replaced by the newly generated ones."
+          confirmLabel="Replace"
+          danger
+          onConfirm={() => apply(pendingGraph)}
+          onCancel={() => setPendingGraph(null)}
+        />
+      )}
     </div>
   );
 }
