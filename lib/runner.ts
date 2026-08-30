@@ -340,6 +340,9 @@ export async function runGraph(path: string[]): Promise<void> {
 
 export function stopTicket(path: string[], ticketId: string): void {
   controllers.get(ticketKey(path, ticketId))?.abort();
+  // A ticket with a subgraph runs as a graph run underneath, not a controller.
+  const t = ticketAtPath(useStore.getState().project.graph, path, ticketId);
+  if (t && t.subgraph.tickets.length > 0) stopGraph([...path, ticketId]);
 }
 
 export function stopGraph(path: string[]): void {

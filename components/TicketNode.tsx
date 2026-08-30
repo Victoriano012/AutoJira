@@ -36,6 +36,23 @@ const statusText: Record<TicketStatus, string> = {
   error: "text-red-500",
 };
 
+/** Some agent is actually executing at or beneath this ticket. */
+function agentWorking(t: Ticket): boolean {
+  if (t.subgraph.tickets.length === 0) return t.status === "running";
+  return t.subgraph.tickets.some(agentWorking);
+}
+
+const reviewBeneath = (g: TicketGraph): boolean =>
+  g.tickets.some((t) => t.status === "review" || reviewBeneath(t.subgraph));
+
+/** Nominally running but really just waiting on a person: no agent is active
+ * beneath, and the stall is human-shaped — a review pending somewhere inside,
+ * or this is a human_review ticket whose board awaits the person. */
+function waitingOnHuman(t: Ticket): boolean {
+  if (t.status !== "running" || agentWorking(t)) return false;
+  return t.type === "human_review" || reviewBeneath(t.subgraph);
+}
+
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
   if (isTicketDone(t)) return "#aad4b1";
@@ -89,6 +106,7 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
 
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const { ticket, path, ready } = data;
+  const waiting = waitingOnHuman(ticket);
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
@@ -109,7 +127,11 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   return (
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
-        selected ? "border-sky-400" : borderByStatus[ticket.status]
+        selected
+          ? "border-sky-400"
+          : waiting
+            ? borderByStatus.review
+            : borderByStatus[ticket.status]
       }`}
     >
       <Handle type="target" position={Position.Left} className={handleClass} />
@@ -169,14 +191,16 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
           </button>
         ) : ticket.status === "running" ? (
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            {!waiting && (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 stopTicket(path, ticket.id);
               }}
               title="Stop"
-              className="text-xs leading-none text-red-600 hover:text-red-500"
+              className="text-sm leading-none text-red-600 hover:text-red-500"
             >
               ◼
             </button>
