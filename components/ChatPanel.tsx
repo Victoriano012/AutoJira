@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
 import { ChatMessage, graphAtPath, ticketAtPath } from "@/lib/types";
-import { usePanelResize } from "@/lib/useResizable";
+import { usePanelResize, useSplitResize } from "@/lib/useResizable";
+import TicketDetails, {
+  ProjectDetails,
+  TicketDetailsHeader,
+} from "./TicketDetails";
 
 const EMPTY: ChatMessage[] = []; // stable fallback so the selector snapshot doesn't churn
 
@@ -15,6 +19,9 @@ export default function ChatPanel() {
   const open = useStore((s) => s.chatOpen);
   const toggleChat = useStore((s) => s.toggleChat);
   const projectName = useStore((s) => s.project.name);
+  const path = useStore((s) => s.path);
+  // The graph that contains the open ticket — where its dependencies live.
+  const parentPath = path.slice(0, -1);
   // The ticket whose graph is open; null at the project root.
   const ticket = useStore((s) =>
     s.path.length === 0
@@ -30,6 +37,11 @@ export default function ChatPanel() {
   const [pending, setPending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const { width, ref: panelRef, handleProps } = usePanelResize();
+  const {
+    height: chatHeight,
+    ref: splitRef,
+    handleProps: splitHandleProps,
+  } = useSplitResize();
   const busy = pending || ticketRunning;
 
   useEffect(() => {
@@ -37,6 +49,16 @@ export default function ChatPanel() {
   }, [messages.length, pending, open]);
 
   if (!open) return null;
+
+  const closeButton = (
+    <button
+      className="shrink-0 text-zinc-400 hover:text-zinc-700"
+      title="Close"
+      onClick={toggleChat}
+    >
+      ✕
+    </button>
+  );
 
   async function send() {
     const text = input.trim();
@@ -112,46 +134,64 @@ export default function ChatPanel() {
       className="relative shrink-0 flex flex-col overflow-hidden border-l border-zinc-200 bg-white"
     >
       <div {...handleProps} title="Drag to resize" />
-      <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
-        <span className="min-w-0 truncate font-medium" title={scopeTitle}>
-          {scopeTitle}
-        </span>
-        <button
-          className="ml-auto text-zinc-400 hover:text-zinc-700"
-          title="Close"
-          onClick={toggleChat}
-        >
-          ✕
-        </button>
+      <div className="shrink-0 flex items-center gap-2 p-3 border-b border-zinc-200">
+        {ticket ? (
+          <TicketDetailsHeader ticket={ticket} path={parentPath}>
+            {closeButton}
+          </TicketDetailsHeader>
+        ) : (
+          <>
+            <span className="flex-1 min-w-0 truncate font-medium" title={scopeTitle}>
+              {scopeTitle}
+            </span>
+            {closeButton}
+          </>
+        )}
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <p
-              key={i}
-              className="bg-zinc-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap"
-            >
-              <span className="text-zinc-400">&gt; </span>
-              {m.text}
-            </p>
+      <div ref={splitRef} className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 border-b border-zinc-200">
+          {ticket ? (
+            <TicketDetails ticket={ticket} path={parentPath} />
           ) : (
-            <p
-              key={i}
-              className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-800 whitespace-pre-wrap"
-            >
-              {m.text}
+            <ProjectDetails />
+          )}
+        </div>
+
+        <div {...splitHandleProps} title="Drag to resize" />
+
+        <div
+          ref={listRef}
+          style={{ height: chatHeight }}
+          className="shrink-0 max-h-[70%] overflow-y-auto p-3 space-y-2"
+        >
+          {messages.map((m, i) =>
+            m.role === "user" ? (
+              <p
+                key={i}
+                className="bg-zinc-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap"
+              >
+                <span className="text-zinc-400">&gt; </span>
+                {m.text}
+              </p>
+            ) : (
+              <p
+                key={i}
+                className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-800 whitespace-pre-wrap"
+              >
+                {m.text}
+              </p>
+            )
+          )}
+          {pending && (
+            <p className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-500 animate-pulse">
+              Working…
             </p>
-          )
-        )}
-        {pending && (
-          <p className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-500 animate-pulse">
-            Working…
-          </p>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="p-3">
+      <div className="shrink-0 p-3">
         <ChatInput
           value={input}
           onChange={setInput}

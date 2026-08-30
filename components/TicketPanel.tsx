@@ -1,42 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  approveTicket,
-  runTicket,
-  sendFeedback,
-  stopTicket,
-} from "@/lib/runner";
+import { sendFeedback } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
 import { usePanelResize, useSplitResize } from "@/lib/useResizable";
-import {
-  dependenciesOf,
-  dependentsOf,
-  graphAtPath,
-  isTicketDone,
-  isTicketRunning,
-  TicketStatus,
-} from "@/lib/types";
-import AttachmentEditor from "./AttachmentEditor";
+import { graphAtPath } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
+import TicketDetails, { TicketDetailsHeader } from "./TicketDetails";
 import TrashIcon from "./TrashIcon";
-import { PlayIcon, StopIcon } from "./icons";
-
-const statusColor: Record<TicketStatus, string> = {
-  todo: "bg-zinc-500",
-  running: "bg-blue-400 animate-pulse",
-  review: "bg-amber-400",
-  done: "bg-emerald-400",
-  error: "bg-red-400",
-};
 
 export default function TicketPanel() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
-  const updateTicket = useStore((s) => s.updateTicket);
   const removeTicket = useStore((s) => s.removeTicket);
 
   const [feedback, setFeedback] = useState("");
@@ -59,9 +37,6 @@ export default function TicketPanel() {
 
   if (!graph || !ticket) return null;
 
-  const deps = dependenciesOf(graph, ticket.id);
-  const dependents = dependentsOf(graph, ticket.id);
-  const runLabel = ticket.subgraph.tickets.length > 0 ? "Run subgraph" : "Run";
   const canChat =
     !!ticket.sessionId &&
     (ticket.status === "review" ||
@@ -82,169 +57,27 @@ export default function TicketPanel() {
     >
       <div {...handleProps} title="Drag to resize" />
       <div className="shrink-0 flex items-center gap-2 p-3 border-b border-zinc-200">
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor[ticket.status]}`} />
-        <input
-          className="flex-1 min-w-0 bg-transparent font-medium outline-none rounded px-1 focus:bg-zinc-100"
-          value={ticket.title}
-          onChange={(e) =>
-            updateTicket(path, ticket.id, (t) => ({ ...t, title: e.target.value }))
-          }
-        />
-        {/* Stop belongs to the running state only: a parent still marked
-            "running" with nothing working inside is waiting, so it gets play. */}
-        {isTicketRunning(ticket) ? (
+        <TicketDetailsHeader ticket={ticket} path={path}>
           <button
-            className="shrink-0 text-red-600 hover:text-red-500"
-            title="Stop"
-            onClick={() => stopTicket(path, ticket.id)}
+            className="text-[#d64545] hover:text-red-700"
+            title="Delete ticket"
+            onClick={() => setConfirmDelete(true)}
           >
-            <StopIcon size={16} />
+            <TrashIcon />
           </button>
-        ) : (
           <button
-            className="shrink-0 text-emerald-600 hover:text-emerald-500"
-            title={runLabel}
-            onClick={() => void runTicket(path, ticket.id)}
+            className="text-zinc-400 hover:text-zinc-700"
+            title="Close"
+            onClick={() => select(null)}
           >
-            <PlayIcon size={16} />
+            ✕
           </button>
-        )}
-        <button
-          className="text-[#d64545] hover:text-red-700"
-          title="Delete ticket"
-          onClick={() => setConfirmDelete(true)}
-        >
-          <TrashIcon />
-        </button>
-        <button
-          className="text-zinc-400 hover:text-zinc-700"
-          title="Close"
-          onClick={() => select(null)}
-        >
-          ✕
-        </button>
+        </TicketDetailsHeader>
       </div>
 
       <div ref={splitRef} className="flex-1 min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 border-b border-zinc-200">
-        <div className="flex items-center gap-2 text-sm">
-          <select
-            className="rounded-lg bg-white border border-zinc-300 px-2 py-1 text-sm outline-none"
-            value={ticket.type}
-            onChange={(e) =>
-              updateTicket(path, ticket.id, (t) => ({
-                ...t,
-                type: e.target.value as typeof t.type,
-              }))
-            }
-          >
-            <option value="ai">🤖 AI</option>
-            <option value="human_review">👤 Human review</option>
-          </select>
-          {/* No status label — the node border + dot already show the state. */}
-          <span className="ml-auto flex gap-1">
-            {ticket.status !== "done" ? (
-              <button
-                className="rounded-full border border-emerald-600 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-600 hover:text-white"
-                onClick={() =>
-                  updateTicket(path, ticket.id, (t) => ({ ...t, status: "done" }))
-                }
-              >
-                ✓ Mark done
-              </button>
-            ) : (
-              <button
-                className="cursor-pointer inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white hover:border-violet-400 hover:text-violet-600 px-2.5 py-1 font-medium text-zinc-600 shadow-sm transition-colors"
-                onClick={() =>
-                  updateTicket(path, ticket.id, (t) => ({ ...t, status: "todo" }))
-                }
-              >
-                Reopen
-              </button>
-            )}
-          </span>
-        </div>
-
-        {ticket.type === "human_review" && (
-          <label className="flex items-start gap-2 text-xs text-zinc-600 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-amber-500"
-              checked={ticket.blocking !== false}
-              onChange={(e) =>
-                updateTicket(path, ticket.id, (t) => ({
-                  ...t,
-                  blocking: e.target.checked,
-                }))
-              }
-            />
-            <span>
-              Blocks dependents until approved
-              <span className="block text-zinc-400">
-                Unchecked: dependents start right after the AI finishes, on a new
-                git branch, while you review this one.
-              </span>
-            </span>
-          </label>
-        )}
-
-        <textarea
-          className="w-full min-h-28 rounded-lg bg-white border border-zinc-300 p-2 text-sm outline-none focus:border-zinc-500"
-          placeholder="Describe what this ticket should accomplish…"
-          value={ticket.description}
-          onChange={(e) =>
-            updateTicket(path, ticket.id, (t) => ({
-              ...t,
-              description: e.target.value,
-            }))
-          }
-        />
-
-        <AttachmentEditor
-          label="Context files"
-          attachments={ticket.attachments ?? []}
-          onChange={(attachments) =>
-            updateTicket(path, ticket.id, (t) => ({ ...t, attachments }))
-          }
-        />
-
-        {deps.length > 0 && (
-          <div className="text-xs text-zinc-600">
-            <span className="text-sm font-medium text-zinc-700">Depends on</span>
-            {deps.map((d) => (
-              <div key={d.id} className="ml-1">
-                {isTicketDone(d) ? "✓" : "○"} {d.title}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {dependents.length > 0 && (
-          <div className="text-xs text-zinc-600">
-            <span className="text-sm font-medium text-zinc-700">Required by</span>
-            {dependents.map((d) => (
-              <div key={d.id} className="ml-1">
-                {isTicketDone(d) ? "✓" : "○"} {d.title}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {ticket.status === "review" && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-xs text-amber-700/80">
-              {ticket.blocking === false
-                ? "Non-blocking: dependent tickets continue on a separate git branch while you review. Ask the AI for changes below, or approve."
-                : "Test the result, ask the AI for changes below, or approve to unblock dependent tickets."}
-            </p>
-            <button
-              className="mt-2 rounded-lg px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-400 text-white font-medium"
-              onClick={() => approveTicket(path, ticket.id)}
-            >
-              ✔ Approve
-            </button>
-          </div>
-        )}
+        <TicketDetails ticket={ticket} path={path} />
       </div>
 
       <div {...splitHandleProps} title="Drag to resize" />
