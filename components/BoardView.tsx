@@ -320,6 +320,10 @@ export default function BoardView() {
 
   if (!graph) return null;
 
+  // The graph area draws one nested frame per layer (inset 3 + i*4 px, see
+  // app/page.tsx); float the bottom bar inside the innermost frame.
+  const frameInset = 3 + path.length * 4 + 16;
+
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
     const ready = dependenciesOf(graph, t.id).every(satisfiesDependents);
@@ -504,7 +508,10 @@ export default function BoardView() {
 
       {/* processing chips */}
       {requests.length > 0 && (
-        <div className="space-y-1.5 px-4 pb-2">
+        <div
+          className="space-y-1.5 pb-2"
+          style={{ marginLeft: frameInset, marginRight: frameInset }}
+        >
           {requests.map((r) =>
             r.error ? (
               <div
@@ -540,7 +547,10 @@ export default function BoardView() {
       )}
 
       {/* bottom bar */}
-      <div className="flex shrink-0 items-center gap-2 border-t border-zinc-200 bg-white px-4 py-3">
+      <div
+        className="flex shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm"
+        style={{ margin: `0 ${frameInset}px ${frameInset}px` }}
+      >
         <input
           className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500"
           placeholder="What should be changed? Press Enter — AI will turn it into tickets and get to work"
