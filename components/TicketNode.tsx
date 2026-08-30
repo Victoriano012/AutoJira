@@ -5,7 +5,10 @@ import { Ticket, ticketProgress, TicketStatus } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { memo } from "react";
 
-export type TicketNodeType = Node<{ ticket: Ticket; path: string[] }, "ticket">;
+export type TicketNodeType = Node<
+  { ticket: Ticket; path: string[]; ready: boolean },
+  "ticket"
+>;
 
 const borderByStatus: Record<TicketStatus, string> = {
   todo: "border-zinc-300",
@@ -32,7 +35,7 @@ const statusText: Record<TicketStatus, string> = {
 };
 
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
-  const { ticket, path } = data;
+  const { ticket, path, ready } = data;
   const progress = ticketProgress(ticket);
 
   return (
@@ -81,12 +84,17 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
         {ticket.status === "todo" ? (
           <button
+            disabled={!ready}
             onClick={(e) => {
               e.stopPropagation();
-              void runTicket(path, ticket.id);
+              if (ready) void runTicket(path, ticket.id);
             }}
-            title="Run"
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[9px] text-white hover:bg-emerald-700"
+            title={ready ? "Run" : "Waiting on dependencies"}
+            className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] text-white ${
+              ready
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "cursor-not-allowed bg-zinc-300"
+            }`}
           >
             ▶
           </button>

@@ -2,7 +2,13 @@
 
 import { layoutGraph } from "@/lib/layout";
 import { useStore } from "@/lib/store";
-import { graphAtPath, TicketStatus, wouldCreateCycle } from "@/lib/types";
+import {
+  dependenciesOf,
+  graphAtPath,
+  satisfiesDependents,
+  TicketStatus,
+  wouldCreateCycle,
+} from "@/lib/types";
 import {
   Background,
   BackgroundVariant,
@@ -53,7 +59,11 @@ export function GraphCanvas() {
       id: t.id,
       type: "ticket" as const,
       position: t.position ?? fallbackPositions.get(t.id) ?? { x: 0, y: 0 },
-      data: { ticket: t, path },
+      data: {
+        ticket: t,
+        path,
+        ready: dependenciesOf(graph, t.id).every(satisfiesDependents),
+      },
       selected: t.id === selectedId,
     }));
   }, [graph, fallbackPositions, path, selectedId]);
