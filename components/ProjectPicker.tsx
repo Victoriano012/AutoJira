@@ -33,14 +33,29 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
         {id}
       </div>
       <button
-        className="absolute right-2 top-2 text-zinc-300 opacity-0 hover:text-red-500 group-hover:opacity-100"
+        className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
         title="Remove project (deletes only its .autojira folder, your files stay)"
         onClick={(e) => {
           e.stopPropagation();
           data.onDelete();
         }}
       >
-        🗑
+        {/* Feather trash-2 silhouette, as used in FoodApp */}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
       </button>
     </div>
   );
