@@ -23,7 +23,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
@@ -35,6 +35,42 @@ export function GraphCanvas() {
   const selectedId = useStore((s) => s.selectedId);
   const { setPath, select, addEdge, removeEdge, removeTicket, updateTicket } =
     useStore.getState();
+
+  // Two-finger horizontal swipe (wheel events with dominant deltaX) navigates
+  // back one graph layer instead of zooming/panning. Native capture-phase,
+  // non-passive listener so we can preventDefault (kills the browser history
+  // swipe) and stop React Flow's own wheel handling for the horizontal axis.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const swipe = useRef({ acc: 0, locked: false, timer: 0 });
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // pinch zoom stays as is
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical scroll stays as is
+      e.preventDefault();
+      e.stopPropagation();
+      const s = swipe.current;
+      window.clearTimeout(s.timer);
+      // one physical swipe = one navigation: stay locked until quiet for 300ms
+      s.timer = window.setTimeout(() => {
+        s.acc = 0;
+        s.locked = false;
+      }, 300);
+      if (s.locked) return;
+      s.acc += e.deltaX;
+      if (s.acc < -80) {
+        // swipe right, like the browser back gesture
+        s.locked = true;
+        s.acc = 0;
+        const st = useStore.getState();
+        if (st.path.length > 0) st.setPath(st.path.slice(0, -1));
+        else st.closeProject();
+      }
+    };
+    el.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => el.removeEventListener("wheel", onWheel, { capture: true });
+  }, []);
 
   // Rendered client-only (dynamic ssr:false) and the store hydrates
   // synchronously from localStorage, so no mount guard is needed.
@@ -120,7 +156,7 @@ export function GraphCanvas() {
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={wrapperRef} className="relative h-full w-full overscroll-x-none">
       <ReactFlow
         // Remount when the viewed graph changes (project switch, subgraph
         // navigation) so the mount-time fitView recenters on it.
