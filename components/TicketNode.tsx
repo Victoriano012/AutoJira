@@ -155,7 +155,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
                   : "Blocks dependents until approved"
               }
             >
-              Human{ticket.blocking === false ? " ⇢" : ""}
+              Human
             </span>
           )}
         </div>
