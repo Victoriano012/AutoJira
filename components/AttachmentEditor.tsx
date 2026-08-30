@@ -4,6 +4,23 @@ import { Attachment } from "@/lib/types";
 
 const MAX_SIZE = 3 * 1024 * 1024; // stored in localStorage — keep files small
 
+/** Appends files to `existing`, skipping oversized ones (with an alert). */
+export async function addFiles(
+  existing: Attachment[],
+  list: FileList | null
+): Promise<Attachment[]> {
+  if (!list) return existing;
+  const next = [...existing];
+  for (const f of Array.from(list)) {
+    if (f.size > MAX_SIZE) {
+      alert(`"${f.name}" is over 3 MB — attachments are stored in the browser, keep them small.`);
+      continue;
+    }
+    next.push(await fileToAttachment(f));
+  }
+  return next;
+}
+
 function fileToAttachment(file: File): Promise<Attachment> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -29,16 +46,7 @@ export default function AttachmentEditor({
   label?: string;
 }) {
   async function add(list: FileList | null) {
-    if (!list) return;
-    const next = [...attachments];
-    for (const f of Array.from(list)) {
-      if (f.size > MAX_SIZE) {
-        alert(`"${f.name}" is over 3 MB — attachments are stored in the browser, keep them small.`);
-        continue;
-      }
-      next.push(await fileToAttachment(f));
-    }
-    onChange(next);
+    onChange(await addFiles(attachments, list));
   }
 
   return (

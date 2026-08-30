@@ -12,7 +12,7 @@ import {
   ticketAtPath,
   TicketType,
 } from "@/lib/types";
-import AttachmentEditor from "./AttachmentEditor";
+import AttachmentEditor, { addFiles } from "./AttachmentEditor";
 
 interface GeneratedTicket {
   title: string;
@@ -39,6 +39,19 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const attachments =
+    (atRoot ? project.attachments : currentTicket?.attachments) ?? [];
+
+  function setAttachments(attachments: typeof project.attachments) {
+    if (atRoot) setProject({ attachments });
+    else if (currentTicket)
+      updateTicket(path.slice(0, -1), currentTicket.id, (t) => ({
+        ...t,
+        attachments,
+      }));
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,26 +145,29 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           the AI will break it into a graph of tickets with dependencies.
         </p>
         <textarea
-          className="mt-4 w-full min-h-40 rounded-lg bg-zinc-50 border border-zinc-300 p-3 text-sm outline-none focus:border-zinc-500"
-          placeholder="What should be built?"
+          className={`mt-4 w-full min-h-40 rounded-lg bg-zinc-50 border p-3 text-sm outline-none focus:border-zinc-500 ${
+            dragging ? "border-violet-500 border-dashed bg-violet-50" : "border-zinc-300"
+          }`}
+          placeholder="What should be built? (drop files here to attach them as context)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            void addFiles(attachments, e.dataTransfer.files).then(setAttachments);
+          }}
           autoFocus
         />
         <div className="mt-3">
           <AttachmentEditor
             label={`Context files for the ${atRoot ? "project" : "ticket"} (inherited by all subtickets)`}
-            attachments={
-              (atRoot ? project.attachments : currentTicket?.attachments) ?? []
-            }
-            onChange={(attachments) => {
-              if (atRoot) setProject({ attachments });
-              else if (currentTicket)
-                updateTicket(path.slice(0, -1), currentTicket.id, (t) => ({
-                  ...t,
-                  attachments,
-                }));
-            }}
+            attachments={attachments}
+            onChange={setAttachments}
           />
         </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
