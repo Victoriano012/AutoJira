@@ -41,7 +41,7 @@ export function GraphCanvas() {
   // non-passive listener so we can preventDefault (kills the browser history
   // swipe) and stop React Flow's own wheel handling for the horizontal axis.
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const swipe = useRef({ acc: 0, locked: false, timer: 0 });
+  const swipe = useRef({ acc: 0, locked: false, last: -Infinity });
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -51,13 +51,16 @@ export function GraphCanvas() {
       e.preventDefault();
       e.stopPropagation();
       const s = swipe.current;
-      window.clearTimeout(s.timer);
-      // one physical swipe = one navigation: stay locked until quiet for 300ms
-      s.timer = window.setTimeout(() => {
+      // A ≥150ms gap since the previous horizontal event marks a new gesture.
+      // Deciding at event time (not with a trailing quiet timer) matters: a
+      // locked-out swipe must not push the release further into the future,
+      // or quick successive swipes chain-extend the lock indefinitely.
+      if (e.timeStamp - s.last > 150) {
         s.acc = 0;
         s.locked = false;
-      }, 300);
-      if (s.locked) return;
+      }
+      s.last = e.timeStamp;
+      if (s.locked) return; // inertia tail of a swipe that already navigated
       s.acc += e.deltaX;
       // The sign of deltaX for a physical right-swipe flips with the user's
       // scroll-direction setting, so a strong horizontal accumulation in
