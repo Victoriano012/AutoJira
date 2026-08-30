@@ -5,6 +5,7 @@ import { autoLayout } from "@/lib/layout";
 import { isGraphRunning, runGraph, stopGraph } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
+import ArrowLeftIcon from "./ArrowLeftIcon";
 import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
 import PopulateModal from "./PopulateModal";
@@ -83,11 +84,11 @@ export default function Toolbar() {
         <HomeIcon />
       </button>
       <button
-        className="shrink-0 text-base text-zinc-500 hover:text-zinc-900"
+        className="shrink-0 text-zinc-500 hover:text-zinc-900"
         onClick={goBack}
         title={path.length === 0 ? "Back to your projects" : `Back to ${backLabel}`}
       >
-        ←
+        <ArrowLeftIcon />
       </button>
       {path.length === 0 ? (
         <input
