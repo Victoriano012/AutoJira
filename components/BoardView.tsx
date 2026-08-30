@@ -548,7 +548,7 @@ export default function BoardView() {
 
       {/* bottom bar */}
       <div
-        className="flex shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm"
+        className="flex shrink-0 items-center gap-2"
         style={{ margin: `0 ${frameInset}px ${frameInset}px` }}
       >
         <input
