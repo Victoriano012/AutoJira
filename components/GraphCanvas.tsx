@@ -30,6 +30,7 @@ const nodeTypes: NodeTypes = { ticket: TicketNode };
 
 export function GraphCanvas() {
   const project = useStore((s) => s.project);
+  const projectId = useStore((s) => s.projectId);
   const path = useStore((s) => s.path);
   const selectedId = useStore((s) => s.selectedId);
   const { setPath, select, addEdge, removeEdge, removeTicket, updateTicket } =
@@ -121,11 +122,15 @@ export function GraphCanvas() {
   return (
     <div className="relative h-full w-full">
       <ReactFlow
+        // Remount when the viewed graph changes (project switch, subgraph
+        // navigation) so the mount-time fitView recenters on it.
+        key={`${projectId}:${path.join("/")}`}
         nodes={nodes}
         edges={styledEdges}
         nodeTypes={nodeTypes}
         colorMode="light"
         fitView
+        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={["Backspace", "Delete"]}
         onConnect={onConnect}
