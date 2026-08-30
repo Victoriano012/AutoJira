@@ -98,8 +98,8 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   return (
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
-        borderByStatus[ticket.status]
-      } ${selected ? "ring-2 ring-sky-400" : ""}`}
+        selected ? "border-sky-400" : borderByStatus[ticket.status]
+      }`}
     >
       <Handle type="target" position={Position.Left} className={handleClass} />
       <Handle type="source" position={Position.Right} className={handleClass} />
