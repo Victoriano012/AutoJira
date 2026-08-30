@@ -159,12 +159,6 @@ export default function Toolbar() {
           onChange={(e) => setProject({ workspaceDir: e.target.value })}
           title="Directory on the server where the agent works"
         />
-        <a
-          className="shrink-0 text-xs text-zinc-400 hover:text-zinc-700"
-          href="/api/auth/signout"
-        >
-          Sign out
-        </a>
       </div>
 
       {showPopulate && <PopulateModal onClose={() => setShowPopulate(false)} />}

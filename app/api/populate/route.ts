@@ -1,5 +1,4 @@
 import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
-import { requireUserId } from "@/lib/auth-server";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
@@ -35,9 +34,6 @@ const GRAPH_SCHEMA = {
 } as const;
 
 export async function POST(req: Request) {
-  if ((await requireUserId()) == null) {
-    return Response.json({ error: "unauthenticated" }, { status: 401 });
-  }
   const { description, chain, attachments } = (await req.json()) as {
     description: string;
     /** Inherited context: project + ancestor tickets, outermost first. */

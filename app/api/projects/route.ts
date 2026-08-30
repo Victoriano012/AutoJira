@@ -1,24 +1,19 @@
-import { requireUserId } from "@/lib/auth-server";
-import { sql } from "@/lib/db";
+import { createProject, importProject, listProjects } from "@/lib/projects-fs";
 
 export async function GET() {
-  const userId = await requireUserId();
-  if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const rows = await sql()`
-    SELECT id, name, updated_at FROM projects
-    WHERE user_id = ${userId} ORDER BY updated_at DESC`;
-  return Response.json({ projects: rows });
+  return Response.json({ projects: listProjects() });
 }
 
+/** {name} creates a new folder under the base dir; {path} imports any folder. */
 export async function POST(req: Request) {
-  const userId = await requireUserId();
-  if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { name, data } = await req.json();
-  const rows = await sql()`
-    INSERT INTO projects (user_id, name, data)
-    VALUES (${userId}, ${name || "Untitled project"}, ${JSON.stringify(data ?? {})})
-    RETURNING id, name, updated_at`;
-  return Response.json(rows[0]);
+  const { name, path } = (await req.json()) as { name?: string; path?: string };
+  try {
+    const row = path ? importProject(path) : createProject(name || "Untitled project");
+    return Response.json(row);
+  } catch (err) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 400 }
+    );
+  }
 }

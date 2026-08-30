@@ -1,5 +1,4 @@
 import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
-import { requireUserId } from "@/lib/auth-server";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
@@ -26,9 +25,6 @@ function describeTool(name: string, input: unknown): string {
 }
 
 export async function POST(req: Request) {
-  if ((await requireUserId()) == null) {
-    return Response.json({ error: "unauthenticated" }, { status: 401 });
-  }
   const { prompt, sessionId, workspaceDir, attachments } =
     (await req.json()) as {
       prompt: string;

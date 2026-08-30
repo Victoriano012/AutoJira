@@ -86,6 +86,14 @@ export function contextChain(project: Project, path: string[]): ContextLevel[] {
 
 export const emptyGraph = (): TicketGraph => ({ tickets: [], edges: [] });
 
+export const defaultProject = (name: string, workspaceDir = ""): Project => ({
+  name,
+  description: "",
+  workspaceDir,
+  attachments: [],
+  graph: emptyGraph(),
+});
+
 export function newTicket(partial?: Partial<Ticket>): Ticket {
   return {
     id: crypto.randomUUID(),
