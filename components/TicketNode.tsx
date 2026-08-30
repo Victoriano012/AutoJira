@@ -167,41 +167,38 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
           >
             ▶
           </button>
-        ) : (
-          <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
-            {ticket.status === "running" && (
-              <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-            )}
-            {statusLabel[ticket.status]}
-          </span>
-        )}
-      </div>
-
-      {(ticket.status === "running" ||
-        ticket.status === "review" ||
-        ticket.status === "error") && (
-        <div className="mt-2 flex items-center gap-1.5">
-          {ticket.status === "running" ? (
+        ) : ticket.status === "running" ? (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 stopTicket(path, ticket.id);
               }}
-              className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-red-600 hover:bg-zinc-200"
+              title="Stop"
+              className="text-xs leading-none text-red-600 hover:text-red-500"
             >
-              ◼ Stop
+              ◼
             </button>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                run();
-              }}
-              className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-200"
-            >
-              ▶ Run
-            </button>
-          )}
+          </span>
+        ) : (
+          <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
+            {statusLabel[ticket.status]}
+          </span>
+        )}
+      </div>
+
+      {(ticket.status === "review" || ticket.status === "error") && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              run();
+            }}
+            className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-200"
+          >
+            ▶ Run
+          </button>
         </div>
       )}
     </div>
