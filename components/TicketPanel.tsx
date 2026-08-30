@@ -19,6 +19,7 @@ import {
 import AttachmentEditor from "./AttachmentEditor";
 import ConfirmDialog from "./ConfirmDialog";
 import TrashIcon from "./TrashIcon";
+import { PlayIcon, StopIcon } from "./icons";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -52,6 +53,7 @@ export default function TicketPanel() {
   if (!graph || !ticket) return null;
 
   const deps = dependenciesOf(graph, ticket.id);
+  const runLabel = ticket.subgraph.tickets.length > 0 ? "Run subgraph" : "Run";
   const canChat =
     !!ticket.sessionId &&
     (ticket.status === "review" ||
@@ -80,6 +82,23 @@ export default function TicketPanel() {
             updateTicket(path, ticket.id, (t) => ({ ...t, title: e.target.value }))
           }
         />
+        {ticket.status === "running" ? (
+          <button
+            className="shrink-0 text-red-600 hover:text-red-500"
+            title="Stop"
+            onClick={() => stopTicket(path, ticket.id)}
+          >
+            <StopIcon size={16} />
+          </button>
+        ) : (
+          <button
+            className="shrink-0 text-emerald-600 hover:text-emerald-500"
+            title={runLabel}
+            onClick={() => void runTicket(path, ticket.id)}
+          >
+            <PlayIcon size={16} />
+          </button>
+        )}
         <button
           className="text-[#d64545] hover:text-red-700"
           title="Delete ticket"
@@ -188,24 +207,6 @@ export default function TicketPanel() {
             ))}
           </div>
         )}
-
-        <div className="flex items-center gap-2">
-          {ticket.status === "running" ? (
-            <button
-              className="rounded-lg px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 text-red-700"
-              onClick={() => stopTicket(path, ticket.id)}
-            >
-              ◼ Stop
-            </button>
-          ) : (
-            <button
-              className="rounded-lg px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white"
-              onClick={() => void runTicket(path, ticket.id)}
-            >
-              ▶ Run{ticket.subgraph.tickets.length > 0 ? " subgraph" : ""}
-            </button>
-          )}
-        </div>
 
         {ticket.status === "review" && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
