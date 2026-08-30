@@ -194,16 +194,15 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             {!waiting && (
               <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
             )}
+            {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 stopTicket(path, ticket.id);
               }}
               title="Stop"
-              className="text-sm leading-none text-red-600 hover:text-red-500"
-            >
-              ◼
-            </button>
+              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
+            />
           </span>
         ) : (
           <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
