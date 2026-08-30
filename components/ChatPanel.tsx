@@ -151,7 +151,7 @@ export default function ChatPanel() {
         )}
       </div>
 
-      <div className="p-3 border-t border-zinc-200">
+      <div className="p-3">
         <ChatInput
           value={input}
           onChange={setInput}

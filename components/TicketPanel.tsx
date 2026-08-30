@@ -304,7 +304,7 @@ export default function TicketPanel() {
       </div>
 
       {canChat && (
-        <div className="shrink-0 p-3 border-t border-zinc-200">
+        <div className="shrink-0 p-3">
           <ChatInput
             value={feedback}
             onChange={setFeedback}
