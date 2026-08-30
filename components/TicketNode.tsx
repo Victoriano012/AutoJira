@@ -103,11 +103,6 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
       <div className="mt-1.5 line-clamp-2 text-sm font-medium text-zinc-900">
         {ticket.title}
       </div>
-      {ticket.description && (
-        <div className="mt-0.5 line-clamp-2 text-xs text-zinc-500">
-          {ticket.description}
-        </div>
-      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
