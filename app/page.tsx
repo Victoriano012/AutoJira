@@ -2,10 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useSyncExternalStore } from "react";
+import BoardView from "@/components/BoardView";
 import TicketPanel from "@/components/TicketPanel";
 import Toolbar from "@/components/Toolbar";
 import { useStore } from "@/lib/store";
 import { openProject, startAutosave } from "@/lib/sync";
+import { ticketAtPath } from "@/lib/types";
 
 const GraphCanvas = dynamic(
   () => import("@/components/GraphCanvas").then((m) => m.GraphCanvas),
@@ -26,6 +28,17 @@ export default function Home() {
   const projectId = useStore((s) => s.projectId);
   const projectLoaded = useStore((s) => s.projectLoaded);
   const depth = useStore((s) => s.path.length);
+  // A human-review ticket's subgraph opens as a kanban board, not a canvas.
+  const showBoard = useStore((s) => {
+    if (s.path.length === 0) return false;
+    const t = ticketAtPath(
+      s.project.graph,
+      s.path.slice(0, -1),
+      s.path[s.path.length - 1]
+    );
+    return t?.type === "human_review";
+  });
+  const boardKey = useStore((s) => s.path.join("/"));
 
   useEffect(() => {
     startAutosave();
@@ -57,7 +70,7 @@ export default function Home() {
       <Toolbar />
       <div className="flex-1 flex min-h-0">
         <main className="flex-1 relative min-w-0">
-          <GraphCanvas />
+          {showBoard ? <BoardView key={boardKey} /> : <GraphCanvas />}
           {/* One nested outline per level — the open project itself counts as
               one level of the meta-graph, so root shows a single frame. */}
           {Array.from({ length: depth + 1 }, (_, i) => (

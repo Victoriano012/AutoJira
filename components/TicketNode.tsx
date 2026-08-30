@@ -2,6 +2,7 @@
 
 import { layoutGraph, NODE_HEIGHT, NODE_WIDTH } from "@/lib/layout";
 import { runTicket, stopTicket } from "@/lib/runner";
+import { useStore } from "@/lib/store";
 import { isTicketDone, Ticket, TicketGraph, TicketStatus } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { memo, useMemo } from "react";
@@ -89,6 +90,16 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const { ticket, path, ready } = data;
 
+  // Running a human-review ticket opens its kanban board (the board is the
+  // human's interface to that work); the subgraph agents start underneath.
+  function run() {
+    if (ticket.type === "human_review") {
+      useStore.getState().setPath([...path, ticket.id]);
+      if (ticket.subgraph.tickets.length === 0) return; // empty board: just open it
+    }
+    void runTicket(path, ticket.id);
+  }
+
   // Visible only while the node is hovered or selected; pointer events stay
   // on so dragging a link from where they sit works even mid-fade.
   const handleClass = `!h-2.5 !w-2.5 !border-zinc-400 !bg-zinc-300 transition-opacity duration-150 ${
@@ -145,7 +156,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             disabled={!ready}
             onClick={(e) => {
               e.stopPropagation();
-              if (ready) void runTicket(path, ticket.id);
+              if (ready) run();
             }}
             title={ready ? "Run" : "Waiting on dependencies"}
             className={`text-sm leading-none ${
@@ -184,7 +195,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                void runTicket(path, ticket.id);
+                run();
               }}
               className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-200"
             >
