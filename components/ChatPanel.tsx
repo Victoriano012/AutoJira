@@ -2,14 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { graphAtPath } from "@/lib/types";
+import { ChatMessage, graphAtPath } from "@/lib/types";
+
+const EMPTY: ChatMessage[] = []; // stable fallback so the selector snapshot doesn't churn
 
 /** Project chat: an agent with the current board's context that works in the
  * workspace dir (run commands, host the site, quick fixes…). */
 export default function ChatPanel() {
   const open = useStore((s) => s.chatOpen);
   const toggleChat = useStore((s) => s.toggleChat);
-  const messages = useStore((s) => s.project.chat ?? []);
+  const messages = useStore((s) => s.project.chat ?? EMPTY);
 
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
