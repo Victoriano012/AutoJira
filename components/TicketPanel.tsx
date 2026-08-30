@@ -182,7 +182,7 @@ export default function TicketPanel() {
         />
 
         <AttachmentEditor
-          label="Context files (inherited by all subtickets)"
+          label="Context files"
           attachments={ticket.attachments ?? []}
           onChange={(attachments) =>
             updateTicket(path, ticket.id, (t) => ({ ...t, attachments }))

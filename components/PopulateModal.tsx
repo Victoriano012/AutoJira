@@ -202,7 +202,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
         />
         <div className={`mt-3 ${loading ? "pointer-events-none opacity-50" : ""}`}>
           <AttachmentEditor
-            label={`Context files for the ${atRoot ? "project" : "ticket"} (inherited by all subtickets)`}
+            label={`Context files for the ${atRoot ? "project" : "ticket"}`}
             attachments={attachments}
             onChange={setAttachments}
           />
