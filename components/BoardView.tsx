@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutGraph } from "@/lib/layout";
 import { approveTicket, rejectTicket, runGraph, runTicket } from "@/lib/runner";
 import { useStore } from "@/lib/store";
+import ChatInput from "./ChatInput";
 import {
   contextChain,
   dependenciesOf,
@@ -538,25 +539,13 @@ export default function BoardView() {
         className="flex shrink-0 items-center gap-2"
         style={{ margin: `0 ${frameInset}px ${frameInset}px` }}
       >
-        <div className="relative min-w-0 flex-1">
-          <input
-            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-10 text-sm outline-none focus:border-zinc-500"
-            placeholder="What should be changed? AI will turn it into tickets and get to work"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitRequest();
-            }}
-          />
-          <button
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40"
-            onClick={submitRequest}
-            disabled={!draft.trim()}
-            title="Send — AI will turn it into tickets"
-          >
-            ↑
-          </button>
-        </div>
+        <ChatInput
+          value={draft}
+          onChange={setDraft}
+          onSend={submitRequest}
+          placeholder="What should be changed? AI will turn it into tickets and get to work"
+          sendTitle="Send — AI will turn it into tickets"
+        />
       </div>
     </div>
   );
