@@ -34,8 +34,8 @@ const COLUMNS: {
   {
     id: "working",
     title: "Working",
-    tint: "border-orange-200 bg-orange-50",
-    header: "text-orange-600",
+    tint: "border-blue-200 bg-blue-50",
+    header: "text-blue-600",
   },
   {
     id: "review",
@@ -384,8 +384,8 @@ export default function BoardView() {
 
                   {col.id === "working" &&
                     (t.status === "running" ? (
-                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-orange-600">
-                        <span className="h-2.5 w-2.5 animate-spin rounded-full border border-orange-400 border-t-transparent" />
+                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-600">
+                        <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
                         Agent working…
                       </div>
                     ) : t.status === "error" ? (
@@ -402,7 +402,7 @@ export default function BoardView() {
                         </button>
                       </div>
                     ) : (
-                      <div className="mt-2 text-[11px] text-orange-500/80">
+                      <div className="mt-2 text-[11px] text-blue-500/80">
                         Queued
                       </div>
                     ))}
