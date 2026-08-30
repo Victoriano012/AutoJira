@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { autoLayout } from "@/lib/layout";
 import { useStore } from "@/lib/store";
 import {
@@ -13,6 +13,15 @@ import {
   TicketType,
 } from "@/lib/types";
 import AttachmentEditor, { addFiles } from "./AttachmentEditor";
+
+const PROGRESS_HINTS = [
+  "Reading your description…",
+  "Splitting the work into tickets…",
+  "Sketching the dependency graph…",
+  "Deciding what needs human review…",
+  "Wiring up dependencies…",
+  "Double-checking the plan…",
+];
 
 interface GeneratedTicket {
   title: string;
@@ -40,6 +49,25 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [hint, setHint] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Cycle through status hints while generating (the endpoint reports no
+  // real progress, so these are just reassurance that work is happening).
+  useEffect(() => {
+    if (!loading) return;
+    setHint(0);
+    const id = setInterval(
+      () => setHint((h) => (h + 1) % PROGRESS_HINTS.length),
+      4000
+    );
+    return () => clearInterval(id);
+  }, [loading]);
+
+  function close() {
+    abortRef.current?.abort();
+    onClose();
+  }
 
   const attachments =
     (atRoot ? project.attachments : currentTicket?.attachments) ?? [];
@@ -55,7 +83,10 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        abortRef.current?.abort();
+        onClose();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -65,9 +96,12 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
     if (!description.trim() || loading) return;
     setLoading(true);
     setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch("/api/populate", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description,
@@ -124,8 +158,10 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
       if (atRoot) setProject({ description });
       onClose();
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(String(err instanceof Error ? err.message : err));
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }
@@ -133,7 +169,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-      onClick={onClose}
+      onClick={close}
     >
       <div
         className="w-full max-w-lg rounded-2xl bg-white border border-zinc-200 p-6 shadow-xl"
@@ -145,9 +181,10 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           the AI will break it into a graph of tickets with dependencies.
         </p>
         <textarea
-          className={`mt-4 w-full min-h-40 rounded-lg bg-zinc-50 border p-3 text-sm outline-none focus:border-zinc-500 ${
+          className={`mt-4 w-full min-h-40 rounded-lg bg-zinc-50 border p-3 text-sm outline-none focus:border-zinc-500 disabled:opacity-60 ${
             dragging ? "border-violet-500 border-dashed bg-violet-50" : "border-zinc-300"
           }`}
+          disabled={loading}
           placeholder="What should be built? (drop files here to attach them as context)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -163,7 +200,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           }}
           autoFocus
         />
-        <div className="mt-3">
+        <div className={`mt-3 ${loading ? "pointer-events-none opacity-50" : ""}`}>
           <AttachmentEditor
             label={`Context files for the ${atRoot ? "project" : "ticket"} (inherited by all subtickets)`}
             attachments={attachments}
@@ -171,10 +208,22 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           />
         </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {loading && (
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3">
+            <div className="flex items-center gap-2 text-sm text-violet-800">
+              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
+              <span className="animate-pulse">{PROGRESS_HINTS[hint]}</span>
+            </div>
+            <p className="mt-1 text-xs text-violet-700/70">
+              The AI agent is building your ticket graph — this can take a
+              minute. Cancel or Escape to stop.
+            </p>
+          </div>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           <button
             className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300"
-            onClick={onClose}
+            onClick={close}
           >
             Cancel
           </button>
@@ -183,7 +232,14 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
             onClick={submit}
             disabled={loading || !description.trim()}
           >
-            {loading ? "Generating…" : "Generate tickets"}
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Generating…
+              </span>
+            ) : (
+              "Generate tickets"
+            )}
           </button>
         </div>
       </div>
