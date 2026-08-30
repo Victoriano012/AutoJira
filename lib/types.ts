@@ -191,6 +191,28 @@ export function satisfiesDependents(t: Ticket): boolean {
   return t.type === "human_review" && t.blocking === false && t.status === "review";
 }
 
+/** Waiting on a human, not actually running.
+ * - A leaf human ticket is Waiting while it awaits the person (status review).
+ * - A human ticket with a board is Running only while some card is genuinely
+ *   running in the Working column; otherwise, with not everything Done, it is
+ *   Waiting for the human to complete it.
+ * - Any ticket whose subtickets are all done, blocked on an unmet dependency,
+ *   or themselves Waiting is itself Waiting. */
+export function isTicketWaiting(t: Ticket): boolean {
+  if (isTicketDone(t)) return false;
+  const g = t.subgraph;
+  if (g.tickets.length === 0)
+    return t.type === "human_review" && t.status === "review";
+  if (t.type === "human_review")
+    return !g.tickets.some((s) => s.status === "running" && !isTicketWaiting(s));
+  return g.tickets.every(
+    (s) =>
+      isTicketDone(s) ||
+      !dependenciesOf(g, s.id).every(satisfiesDependents) ||
+      isTicketWaiting(s)
+  );
+}
+
 /** True if running the graph now could make progress somewhere inside. */
 export function hasRunnableWork(g: TicketGraph): boolean {
   return g.tickets.some((t) => {

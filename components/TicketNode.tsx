@@ -3,7 +3,13 @@
 import { layoutGraph, NODE_HEIGHT, NODE_WIDTH } from "@/lib/layout";
 import { runTicket, stopTicket } from "@/lib/runner";
 import { useStore } from "@/lib/store";
-import { isTicketDone, Ticket, TicketGraph, TicketStatus } from "@/lib/types";
+import {
+  isTicketDone,
+  isTicketWaiting,
+  Ticket,
+  TicketGraph,
+  TicketStatus,
+} from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { memo, useMemo } from "react";
 
@@ -35,23 +41,6 @@ const statusText: Record<TicketStatus, string> = {
   done: "text-emerald-600",
   error: "text-red-500",
 };
-
-/** Some agent is actually executing at or beneath this ticket. */
-function agentWorking(t: Ticket): boolean {
-  if (t.subgraph.tickets.length === 0) return t.status === "running";
-  return t.subgraph.tickets.some(agentWorking);
-}
-
-const reviewBeneath = (g: TicketGraph): boolean =>
-  g.tickets.some((t) => t.status === "review" || reviewBeneath(t.subgraph));
-
-/** Nominally running but really just waiting on a person: no agent is active
- * beneath, and the stall is human-shaped — a review pending somewhere inside,
- * or this is a human_review ticket whose board awaits the person. */
-function waitingOnHuman(t: Ticket): boolean {
-  if (t.status !== "running" || agentWorking(t)) return false;
-  return t.type === "human_review" || reviewBeneath(t.subgraph);
-}
 
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
@@ -106,7 +95,7 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
 
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const { ticket, path, ready } = data;
-  const waiting = waitingOnHuman(ticket);
+  const waiting = isTicketWaiting(ticket);
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
@@ -129,7 +118,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
         selected
           ? "border-sky-400"
-          : waiting
+          : waiting && ticket.status !== "error"
             ? borderByStatus.review
             : borderByStatus[ticket.status]
       }`}
@@ -205,25 +194,23 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             />
           </span>
         ) : (
-          <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
+          <span className={`flex items-center gap-2 text-[10px] ${statusText[ticket.status]}`}>
             {statusLabel[ticket.status]}
+            {(ticket.status === "review" || ticket.status === "error") && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  run();
+                }}
+                title="Run"
+                className="text-sm leading-none text-emerald-600 hover:text-emerald-500"
+              >
+                ▶
+              </button>
+            )}
           </span>
         )}
       </div>
-
-      {(ticket.status === "review" || ticket.status === "error") && (
-        <div className="mt-2 flex items-center gap-1.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              run();
-            }}
-            className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-200"
-          >
-            ▶ Run
-          </button>
-        </div>
-      )}
     </div>
   );
 }
