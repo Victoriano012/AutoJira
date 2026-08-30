@@ -309,8 +309,9 @@ export default function BoardView() {
   if (!graph) return null;
 
   // The graph area draws one nested frame per layer (inset 3 + i*4 px, see
-  // app/page.tsx); float the bottom bar inside the innermost frame.
-  const frameInset = 3 + path.length * 4 + 16;
+  // app/page.tsx); keep only a narrow gutter inside the innermost frame so
+  // the column stack uses the space right up to the border.
+  const frameInset = 3 + path.length * 4 + 6;
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
@@ -328,7 +329,8 @@ export default function BoardView() {
       {/* columns */}
       <div
         ref={boardRef}
-        className="relative flex min-h-0 flex-1 gap-3 p-4"
+        className="relative flex min-h-0 flex-1 gap-2"
+        style={{ padding: frameInset }}
         onScrollCapture={() => {
           skipFlipRef.current = true;
           setMeasureTick((t) => t + 1);
