@@ -500,11 +500,6 @@ export default function BoardView() {
           ))}
         </svg>
 
-        {graph.tickets.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
-            No tickets on this board yet — describe what you want below
-          </div>
-        )}
       </div>
 
       {/* processing chips */}
