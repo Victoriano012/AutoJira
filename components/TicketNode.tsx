@@ -89,22 +89,20 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
 function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const { ticket, path, ready } = data;
 
+  // Visible only while the node is hovered or selected; pointer events stay
+  // on so dragging a link from where they sit works even mid-fade.
+  const handleClass = `!h-2.5 !w-2.5 !border-zinc-400 !bg-zinc-300 transition-opacity duration-150 ${
+    selected ? "!opacity-100" : "!opacity-0 group-hover:!opacity-100"
+  }`;
+
   return (
     <div
-      className={`relative w-64 rounded-xl border-2 bg-white p-3 shadow-lg shadow-zinc-900/10 ${
+      className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
         borderByStatus[ticket.status]
       } ${selected ? "ring-2 ring-sky-400" : ""}`}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!h-2.5 !w-2.5 !border-zinc-400 !bg-zinc-300"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!h-2.5 !w-2.5 !border-zinc-400 !bg-zinc-300"
-      />
+      <Handle type="target" position={Position.Left} className={handleClass} />
+      <Handle type="source" position={Position.Right} className={handleClass} />
 
       {ticket.status === "done" && (
         <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">
@@ -168,8 +166,10 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+      {(ticket.status === "running" ||
+        ticket.status === "review" ||
+        ticket.status === "error") && (
+        <div className="mt-2 flex items-center gap-1.5">
           {ticket.status === "running" ? (
             <button
               onClick={(e) => {
@@ -180,7 +180,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             >
               ◼ Stop
             </button>
-          ) : ticket.status === "review" || ticket.status === "error" ? (
+          ) : (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -190,9 +190,9 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             >
               ▶ Run
             </button>
-          ) : null}
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
