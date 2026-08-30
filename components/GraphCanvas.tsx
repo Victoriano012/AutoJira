@@ -6,7 +6,6 @@ import {
   dependenciesOf,
   graphAtPath,
   satisfiesDependents,
-  TicketStatus,
   wouldCreateCycle,
 } from "@/lib/types";
 import {
@@ -16,7 +15,6 @@ import {
   BackgroundVariant,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   type Connection,
   type Edge,
@@ -29,14 +27,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
-
-const minimapColor: Record<TicketStatus, string> = {
-  todo: "#d4d4d8",
-  running: "#60a5fa",
-  review: "#fbbf24",
-  done: "#10b981",
-  error: "#ef4444",
-};
 
 export function GraphCanvas() {
   const project = useStore((s) => s.project);
@@ -152,15 +142,6 @@ export function GraphCanvas() {
       >
         <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
         <Controls />
-        <MiniMap
-          pannable
-          zoomable
-          nodeColor={(n) =>
-            minimapColor[(n as TicketNodeType).data.ticket.status] ?? "#d4d4d8"
-          }
-          maskColor="rgba(250, 250, 250, 0.7)"
-          bgColor="#f4f4f5"
-        />
       </ReactFlow>
       {graph && graph.tickets.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
