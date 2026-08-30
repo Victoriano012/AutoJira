@@ -205,6 +205,9 @@ export function satisfiesDependents(t: Ticket): boolean {
  * counts is whether a leaf inside is running — at any depth. */
 export function isTicketRunning(t: Ticket): boolean {
   if (t.subgraph.tickets.length > 0) return t.subgraph.tickets.some(isTicketRunning);
+  // A human ticket with nothing inside has no agent of its own, so its
+  // "running" is bookkeeping just like a parent's: the person moves it on.
+  if (t.type === "human_review") return false;
   return t.status === "running";
 }
 
@@ -218,8 +221,9 @@ export function isTicketRunning(t: Ticket): boolean {
 export function isTicketWaiting(t: Ticket): boolean {
   if (isTicketDone(t) || isTicketRunning(t)) return false;
   const g = t.subgraph;
-  if (g.tickets.length === 0)
-    return t.type === "human_review" && t.status === "review";
+  // Not done and nothing inside to run: an unfinished human ticket is waiting
+  // on its person whatever status the runner left on it.
+  if (g.tickets.length === 0) return t.type === "human_review";
   // Nothing is genuinely running inside (checked above), so an unfinished
   // board is waiting on its human.
   if (t.type === "human_review") return true;
