@@ -10,6 +10,7 @@ import {
   wouldCreateCycle,
 } from "@/lib/types";
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
@@ -18,10 +19,11 @@ import {
   ReactFlow,
   type Connection,
   type Edge,
+  type NodeChange,
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
@@ -53,7 +55,7 @@ export function GraphCanvas() {
     [graph]
   );
 
-  const nodes: TicketNodeType[] = useMemo(() => {
+  const storeNodes: TicketNodeType[] = useMemo(() => {
     if (!graph) return [];
     return graph.tickets.map((t) => ({
       id: t.id,
@@ -67,6 +69,16 @@ export function GraphCanvas() {
       selected: t.id === selectedId,
     }));
   }, [graph, fallbackPositions, path, selectedId]);
+
+  // Local node state so dragging follows the cursor; the store is only
+  // written on drag stop, and storeNodes changes re-sync local state.
+  const [nodes, setNodes] = useState(storeNodes);
+  useEffect(() => setNodes(storeNodes), [storeNodes]);
+  const onNodesChange = useCallback(
+    (changes: NodeChange<TicketNodeType>[]) =>
+      setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
 
   const edges: Edge[] = useMemo(() => {
     if (!graph) return [];
@@ -103,6 +115,7 @@ export function GraphCanvas() {
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={["Backspace", "Delete"]}
         onConnect={onConnect}
+        onNodesChange={onNodesChange}
         onNodeDragStop={(_, node) =>
           updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
         }
