@@ -37,12 +37,6 @@ export default function TicketPanel() {
 
   if (!graph || !ticket) return null;
 
-  const canChat =
-    !!ticket.sessionId &&
-    (ticket.status === "review" ||
-      ticket.status === "done" ||
-      ticket.status === "error");
-
   function send() {
     if (!ticket || !feedback.trim()) return;
     void sendFeedback(path, ticket.id, feedback.trim());
@@ -87,9 +81,6 @@ export default function TicketPanel() {
         style={{ height: logHeight }}
         className="shrink-0 max-h-[70%] overflow-y-auto p-3 space-y-2"
       >
-        {(ticket.log ?? []).length === 0 && (
-          <p className="text-xs text-zinc-400">No activity yet.</p>
-        )}
         {(ticket.log ?? []).map((entry, i) => {
           switch (entry.kind) {
             case "tool":
@@ -136,17 +127,15 @@ export default function TicketPanel() {
       </div>
       </div>
 
-      {canChat && (
-        <div className="shrink-0 p-3">
-          <ChatInput
-            value={feedback}
-            onChange={setFeedback}
-            onSend={send}
-            placeholder="Tell the AI what to change…"
-            sendTitle="Send — the AI picks the ticket back up right away"
-          />
-        </div>
-      )}
+      <div className="shrink-0 p-3">
+        <ChatInput
+          value={feedback}
+          onChange={setFeedback}
+          onSend={send}
+          placeholder="Tell the AI what to change…"
+          sendTitle="Send — the AI picks the ticket back up right away"
+        />
+      </div>
 
       {confirmDelete && (
         <ConfirmDialog
