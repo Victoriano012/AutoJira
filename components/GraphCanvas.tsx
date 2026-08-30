@@ -10,6 +10,7 @@ import {
   wouldCreateCycle,
 } from "@/lib/types";
 import {
+  applyEdgeChanges,
   applyNodeChanges,
   Background,
   BackgroundVariant,
@@ -19,6 +20,7 @@ import {
   ReactFlow,
   type Connection,
   type Edge,
+  type EdgeChange,
   type NodeChange,
   type NodeTypes,
 } from "@xyflow/react";
@@ -80,7 +82,7 @@ export function GraphCanvas() {
     []
   );
 
-  const edges: Edge[] = useMemo(() => {
+  const storeEdges: Edge[] = useMemo(() => {
     if (!graph) return [];
     return graph.edges.map((e) => {
       const target = graph.tickets.find((t) => t.id === e.target);
@@ -95,6 +97,28 @@ export function GraphCanvas() {
     });
   }, [graph]);
 
+  // Same local-state mirror for edges so they can be selected (and then
+  // deleted with Backspace/Delete); the store stays the source of truth.
+  const [edges, setEdges] = useState(storeEdges);
+  useEffect(() => setEdges(storeEdges), [storeEdges]);
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
+  const styledEdges = useMemo(
+    () =>
+      edges.map((e) =>
+        e.selected
+          ? {
+              ...e,
+              style: { stroke: "#8b5cf6", strokeWidth: 2 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
+            }
+          : e
+      ),
+    [edges]
+  );
+
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!graph || !conn.source || !conn.target) return;
@@ -108,7 +132,7 @@ export function GraphCanvas() {
     <div className="relative h-full w-full">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={styledEdges}
         nodeTypes={nodeTypes}
         colorMode="light"
         fitView
@@ -116,6 +140,7 @@ export function GraphCanvas() {
         deleteKeyCode={["Backspace", "Delete"]}
         onConnect={onConnect}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         onNodeDragStop={(_, node) =>
           updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
         }
