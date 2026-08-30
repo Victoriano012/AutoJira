@@ -61,27 +61,38 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         </span>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        {ticket.type === "ai" ? (
-          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
-            AI
-          </span>
-        ) : (
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-amber-700 ${
-              ticket.blocking === false
-                ? "border border-amber-400"
-                : "bg-amber-100"
-            }`}
-            title={
-              ticket.blocking === false
-                ? "Non-blocking review: dependents start before approval (on a git branch)"
-                : "Blocks dependents until approved"
-            }
-          >
-            Human review{ticket.blocking === false ? " ⇢" : ""}
-          </span>
-        )}
+      <div className="line-clamp-2 text-sm font-medium text-zinc-900">
+        {ticket.title}
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {ticket.type === "ai" ? (
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+              AI
+            </span>
+          ) : (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-amber-700 ${
+                ticket.blocking === false
+                  ? "border border-amber-400"
+                  : "bg-amber-100"
+              }`}
+              title={
+                ticket.blocking === false
+                  ? "Non-blocking review: dependents start before approval (on a git branch)"
+                  : "Blocks dependents until approved"
+              }
+            >
+              Human review{ticket.blocking === false ? " ⇢" : ""}
+            </span>
+          )}
+          {progress && (
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
+              {progress.done}/{progress.total} subtasks
+            </span>
+          )}
+        </div>
         {ticket.status === "todo" ? (
           <button
             disabled={!ready}
@@ -108,10 +119,6 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
       </div>
 
-      <div className="mt-1.5 line-clamp-2 text-sm font-medium text-zinc-900">
-        {ticket.title}
-      </div>
-
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           {ticket.status === "running" ? (
@@ -136,11 +143,6 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             </button>
           ) : null}
         </div>
-        {progress && (
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-600">
-            {progress.done}/{progress.total} subtasks
-          </span>
-        )}
       </div>
     </div>
   );
