@@ -1,0 +1,100 @@
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import os from "os";
+
+export const maxDuration = 300;
+
+// Breaks a human's board request into tickets, like /api/populate, but keeps
+// all requests for one board in a single conversation: the caller passes back
+// the sessionId returned by the previous request and we resume it.
+const REQUEST_SCHEMA = {
+  type: "object",
+  properties: {
+    tickets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          // indexes into this array of tickets that must complete first
+          dependsOn: { type: "array", items: { type: "integer" } },
+          // numbers of the existing unsolved tickets (as listed in the prompt)
+          dependsOnExisting: { type: "array", items: { type: "integer" } },
+        },
+        required: ["title", "description", "dependsOn", "dependsOnExisting"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["tickets"],
+  additionalProperties: false,
+} as const;
+
+export async function POST(req: Request) {
+  const { request, sessionId, existing, chain } = (await req.json()) as {
+    request: string;
+    /** Session of this board's request conversation; omitted on the first request. */
+    sessionId?: string;
+    /** Unsolved tickets already on the board, referencable as dependencies. */
+    existing?: { title: string; description: string; status: string }[];
+    /** Inherited context: project + ancestor tickets, outermost first. */
+    chain?: { title: string; description: string }[];
+  };
+
+  const prompt = [
+    sessionId
+      ? `Another request from the human on the same kanban board.`
+      : [
+          `You are the planner behind a kanban board where AI coding agents execute tickets. The human posts change requests; you break each request into tickets for the agents.`,
+          chain?.length
+            ? `\nBoard context (outermost first):\n${chain
+                .map((c) => `- ${c.title}${c.description ? `: ${c.description}` : ""}`)
+                .join("\n")}`
+            : "",
+        ].join("\n"),
+    existing?.length
+      ? `\nUnsolved tickets currently on the board:\n${existing
+          .map(
+            (t, i) =>
+              `${i}. ${t.title} [${t.status}]${t.description ? ` — ${t.description}` : ""}`
+          )
+          .join("\n")}`
+      : `\nThe board currently has no unsolved tickets.`,
+    `\nHuman request:\n${request}`,
+    `\nRules:
+- Break the request into 1 to 6 tickets, each a self-contained unit of work an AI coding agent can do in one session.
+- Each ticket's description tells the agent exactly what to build/do.
+- dependsOn lists 0-based indexes into YOUR new tickets array that must finish first; order the array so dependencies come before dependents. dependsOnExisting lists numbers of the existing unsolved tickets above that must finish first. Only real dependencies — keep the graph as parallel as possible. No cycles.
+- Answer directly from the request — do not use any tools.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    let newSessionId: string | undefined;
+    for await (const msg of query({
+      prompt,
+      options: {
+        cwd: os.tmpdir(),
+        maxTurns: 4,
+        outputFormat: { type: "json_schema", schema: REQUEST_SCHEMA },
+        ...(sessionId ? { resume: sessionId } : {}),
+      },
+    })) {
+      if (msg.type === "system" && msg.subtype === "init") {
+        newSessionId = msg.session_id;
+      } else if (msg.type === "result") {
+        if (msg.subtype === "success" && msg.structured_output) {
+          return Response.json({ ...msg.structured_output, sessionId: newSessionId });
+        }
+        return Response.json(
+          { error: `Ticket generation failed: ${msg.subtype}` },
+          { status: 502 }
+        );
+      }
+    }
+  } catch (err) {
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+  return Response.json({ error: "No result from agent" }, { status: 502 });
+}

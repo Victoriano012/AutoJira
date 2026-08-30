@@ -36,6 +36,9 @@ export interface Ticket {
   position: { x: number; y: number } | null;
   subgraph: TicketGraph;
   sessionId?: string; // Claude session, kept so review feedback resumes the same context
+  /** human_review only: session of the board's request conversation, so every
+   * bottom-bar request on this ticket's kanban board resumes the same chat. */
+  boardSessionId?: string;
   log: LogEntry[];
   resultSummary?: string;
 }

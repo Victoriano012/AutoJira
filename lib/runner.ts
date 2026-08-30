@@ -157,11 +157,17 @@ async function runLeafTicket(path: string[], ticketId: string): Promise<void> {
   });
 
   const summary = text.length > 1500 ? text.slice(0, 1500) + "…" : text;
-  updateTicket(path, ticketId, (t) => ({
-    ...t,
-    status: !ok ? "error" : t.type === "human_review" ? "review" : "done",
-    resultSummary: summary,
-  }));
+  // Skip the final write if something else already moved the ticket out of
+  // "running" (e.g. a board rejection reset it to todo while aborting).
+  updateTicket(path, ticketId, (t) =>
+    t.status !== "running"
+      ? t
+      : {
+          ...t,
+          status: !ok ? "error" : t.type === "human_review" ? "review" : "done",
+          resultSummary: summary,
+        }
+  );
 }
 
 /** Send human feedback into the ticket's existing agent session. */
@@ -182,11 +188,57 @@ export async function sendFeedback(
     sessionId: ticket.sessionId,
   });
 
-  updateTicket(path, ticketId, (t) => ({
-    ...t,
-    status: ok ? "review" : "error",
-    resultSummary: text.length > 1500 ? text.slice(0, 1500) + "…" : text,
-  }));
+  updateTicket(path, ticketId, (t) =>
+    t.status !== "running"
+      ? t
+      : {
+          ...t,
+          status: ok ? "review" : "error",
+          resultSummary: text.length > 1500 ? text.slice(0, 1500) + "…" : text,
+        }
+  );
+}
+
+/**
+ * Reject a ticket in review with feedback (kanban board's red cross): the
+ * feedback resumes the ticket's agent session, and every downstream ticket
+ * that already started on top of the rejected work (running or in review)
+ * is reset to todo so it re-runs once the dependency is solved again.
+ */
+export async function rejectTicket(
+  path: string[],
+  ticketId: string,
+  message: string
+): Promise<void> {
+  const { project, updateTicket } = useStore.getState();
+  const g = graphAtPath(project.graph, path);
+  if (!g) return;
+
+  const downstream = new Set<string>();
+  const stack = [ticketId];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const e of g.edges) {
+      if (e.source === cur && !downstream.has(e.target)) {
+        downstream.add(e.target);
+        stack.push(e.target);
+      }
+    }
+  }
+  for (const id of downstream) {
+    const t = g.tickets.find((t) => t.id === id);
+    if (t && (t.status === "running" || t.status === "review")) {
+      // todo first: the aborted run's final write then sees a non-running
+      // status and leaves the reset in place.
+      updateTicket(path, id, (x) => ({ ...x, status: "todo" }));
+      stopTicket(path, id);
+    }
+  }
+
+  await sendFeedback(path, ticketId, message);
+  // A fixed non-blocking review satisfies dependents again — restart the
+  // scheduler if this graph's run is still active.
+  if (activeGraphRuns.has(pathKey(path))) void runGraph(path);
 }
 
 /** Approve a ticket in review (or force-complete any ticket). */
