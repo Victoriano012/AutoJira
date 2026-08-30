@@ -1,7 +1,6 @@
 "use client";
 
 import { runTicket, stopTicket } from "@/lib/runner";
-import { useStore } from "@/lib/store";
 import { Ticket, ticketProgress, TicketStatus } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { memo } from "react";
@@ -80,12 +79,25 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             Human review{ticket.blocking === false ? " ⇢" : ""}
           </span>
         )}
-        <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
-          {ticket.status === "running" && (
-            <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-          )}
-          {statusLabel[ticket.status]}
-        </span>
+        {ticket.status === "todo" ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void runTicket(path, ticket.id);
+            }}
+            title="Run"
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[9px] text-white hover:bg-emerald-700"
+          >
+            ▶
+          </button>
+        ) : (
+          <span className={`flex items-center gap-1 text-[10px] ${statusText[ticket.status]}`}>
+            {ticket.status === "running" && (
+              <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            )}
+            {statusLabel[ticket.status]}
+          </span>
+        )}
       </div>
 
       <div className="mt-1.5 line-clamp-2 text-sm font-medium text-zinc-900">
@@ -109,7 +121,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             >
               ◼ Stop
             </button>
-          ) : (
+          ) : ticket.status !== "todo" ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -119,16 +131,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             >
               ▶ Run
             </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              useStore.getState().setPath([...path, ticket.id]);
-            }}
-            className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-200"
-          >
-            ⤵ Open
-          </button>
+          ) : null}
         </div>
         {progress && (
           <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-600">
