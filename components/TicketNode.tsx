@@ -151,7 +151,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             // stored type, so projects decomposed before this type existed
             // label correctly without a migration.
             <span
-              className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-800"
+              className="rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-medium text-pink-800"
               title="Work decomposed into a nested graph"
             >
               Subgraph
