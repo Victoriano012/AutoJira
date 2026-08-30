@@ -40,15 +40,25 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
           : "border-zinc-300 hover:border-violet-400"
       }`}
     >
-      {/* Run/stop controls sit beside the name, like a ticket node's row —
-          a project is just the outermost ticket. pr-5 clears the hover trash. */}
-      <div className="flex items-center gap-1.5 pr-5">
+      {/* One row: name, then trash, then run/stop rightmost — a project is
+          just the outermost ticket, so it gets a ticket node's control row. */}
+      <div className="flex items-center gap-1.5">
         <div
           className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900"
           title={data.name}
         >
           {data.name}
         </div>
+        <button
+          className="text-[#d64545] hover:text-red-700"
+          title="Remove project (hide from this view, or erase from the computer)"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onDelete();
+          }}
+        >
+          <TrashIcon />
+        </button>
         {data.running ? (
           <span className="flex items-center gap-1.5">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
@@ -79,16 +89,6 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
       <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
         <bdi>{id}</bdi>
       </div>
-      <button
-        className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
-        title="Remove project (hide from this view, or erase from the computer)"
-        onClick={(e) => {
-          e.stopPropagation();
-          data.onDelete();
-        }}
-      >
-        <TrashIcon />
-      </button>
     </div>
   );
 }
