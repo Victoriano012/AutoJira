@@ -8,6 +8,13 @@ export interface GraphEdge {
   target: string; // ticket id that depends on source
 }
 
+export interface Attachment {
+  id: string;
+  name: string;
+  mediaType: string;
+  dataUrl: string; // data:<mediaType>;base64,…
+}
+
 export interface LogEntry {
   kind: "text" | "tool" | "user" | "error" | "info";
   text: string;
@@ -24,6 +31,8 @@ export interface Ticket {
    * keep testing (and get fixes on) the review ticket's branch. Default true. */
   blocking?: boolean;
   status: TicketStatus;
+  /** Context files inherited by everything in this ticket's subgraph. */
+  attachments?: Attachment[];
   position: { x: number; y: number } | null;
   subgraph: TicketGraph;
   sessionId?: string; // Claude session, kept so review feedback resumes the same context
@@ -40,7 +49,39 @@ export interface Project {
   name: string;
   description: string;
   workspaceDir: string; // where the agent works; empty = server temp dir
+  /** Project-wide context files, inherited by every ticket. */
+  attachments?: Attachment[];
   graph: TicketGraph;
+}
+
+export interface ContextLevel {
+  title: string;
+  description: string;
+  attachments: Attachment[];
+}
+
+/** Inherited context along `path`: the project (level 0) plus every ancestor
+ * ticket. Each level's description and attachments apply to everything below. */
+export function contextChain(project: Project, path: string[]): ContextLevel[] {
+  const levels: ContextLevel[] = [
+    {
+      title: project.name,
+      description: project.description,
+      attachments: project.attachments ?? [],
+    },
+  ];
+  let g = project.graph;
+  for (const id of path) {
+    const t = g.tickets.find((t) => t.id === id);
+    if (!t) break;
+    levels.push({
+      title: t.title,
+      description: t.description,
+      attachments: t.attachments ?? [],
+    });
+    g = t.subgraph;
+  }
+  return levels;
 }
 
 export const emptyGraph = (): TicketGraph => ({ tickets: [], edges: [] });

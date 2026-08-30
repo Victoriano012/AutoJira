@@ -14,6 +14,7 @@ import {
   isTicketDone,
   TicketStatus,
 } from "@/lib/types";
+import AttachmentEditor from "./AttachmentEditor";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -177,6 +178,14 @@ export default function TicketPanel() {
               ...t,
               description: e.target.value,
             }))
+          }
+        />
+
+        <AttachmentEditor
+          label="Context files (inherited by all subtickets)"
+          attachments={ticket.attachments ?? []}
+          onChange={(attachments) =>
+            updateTicket(path, ticket.id, (t) => ({ ...t, attachments }))
           }
         />
 

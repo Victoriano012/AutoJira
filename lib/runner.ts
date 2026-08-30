@@ -2,6 +2,8 @@
 
 import { useStore } from "./store";
 import {
+  Attachment,
+  contextChain,
   dependenciesOf,
   graphAtPath,
   hasRunnableWork,
@@ -18,17 +20,13 @@ const loopRunning = new Set<string>(); // prevents duplicate scheduler loops
 const pathKey = (path: string[]) => path.join("/") || "(root)";
 const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
 
-function ancestors(path: string[]): string[] {
+/** All context files that apply to a ticket: project + ancestors + its own. */
+function inheritedAttachments(path: string[], ticket: Ticket): Attachment[] {
   const { project } = useStore.getState();
-  const names: string[] = [];
-  let g = project.graph;
-  for (const id of path) {
-    const t = g.tickets.find((t) => t.id === id);
-    if (!t) break;
-    names.push(t.title);
-    g = t.subgraph;
-  }
-  return names;
+  return [
+    ...contextChain(project, path).flatMap((l) => l.attachments),
+    ...(ticket.attachments ?? []),
+  ];
 }
 
 function buildPrompt(path: string[], ticket: Ticket): string {
@@ -36,7 +34,9 @@ function buildPrompt(path: string[], ticket: Ticket): string {
   const g = graphAtPath(project.graph, path)!;
   const deps = dependenciesOf(g, ticket.id).filter(satisfiesDependents);
   const pendingReviewDeps = deps.filter((d) => !isTicketDone(d));
-  const crumb = ancestors(path);
+  const ctx = contextChain(project, path);
+  const crumb = ctx.slice(1).map((l) => l.title);
+  const parentContext = ctx.slice(1).filter((l) => l.description);
   const slug = ticket.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -47,6 +47,9 @@ function buildPrompt(path: string[], ticket: Ticket): string {
     `You are an autonomous engineer working on the project "${project.name}" inside the current working directory. Do the work described by the ticket below directly in this directory.`,
     project.description && `\nProject description:\n${project.description}`,
     crumb.length > 0 && `\nThis ticket is a subtask of: ${crumb.join(" > ")}`,
+    parentContext.length > 0 &&
+      `\nContext from parent tickets (applies to this ticket too):\n` +
+        parentContext.map((l) => `- ${l.title}: ${l.description}`).join("\n"),
     deps.length > 0 &&
       `\nCompleted tickets this one depends on:\n` +
         deps
@@ -68,7 +71,11 @@ function buildPrompt(path: string[], ticket: Ticket): string {
 async function streamAgent(
   path: string[],
   ticketId: string,
-  body: { prompt: string; sessionId?: string }
+  body: {
+    prompt: string;
+    sessionId?: string;
+    attachments?: { name: string; dataUrl: string }[];
+  }
 ): Promise<{ ok: boolean; text: string; sessionId?: string }> {
   const { project, appendLog, updateTicket } = useStore.getState();
   const ctrl = new AbortController();
@@ -143,6 +150,10 @@ async function runLeafTicket(path: string[], ticketId: string): Promise<void> {
 
   const { ok, text } = await streamAgent(path, ticketId, {
     prompt: buildPrompt(path, ticket),
+    attachments: inheritedAttachments(path, ticket).map(({ name, dataUrl }) => ({
+      name,
+      dataUrl,
+    })),
   });
 
   const summary = text.length > 1500 ? text.slice(0, 1500) + "…" : text;

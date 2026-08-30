@@ -1,3 +1,4 @@
+import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
@@ -24,11 +25,13 @@ function describeTool(name: string, input: unknown): string {
 }
 
 export async function POST(req: Request) {
-  const { prompt, sessionId, workspaceDir } = (await req.json()) as {
-    prompt: string;
-    sessionId?: string;
-    workspaceDir?: string;
-  };
+  const { prompt, sessionId, workspaceDir, attachments } =
+    (await req.json()) as {
+      prompt: string;
+      sessionId?: string;
+      workspaceDir?: string;
+      attachments?: AttachmentPayload[];
+    };
 
   const cwd =
     workspaceDir?.trim() ||
@@ -36,13 +39,25 @@ export async function POST(req: Request) {
     path.join(os.tmpdir(), "autojira-workspace");
   fs.mkdirSync(cwd, { recursive: true });
 
+  let fullPrompt = prompt;
+  if (attachments?.length) {
+    const files = writeAttachments(
+      path.join(cwd, ".autojira", "attachments"),
+      attachments
+    );
+    fullPrompt =
+      `Reference files attached to this ticket or inherited from parent tickets (read them when relevant):\n` +
+      files.map((f) => `- ${f}`).join("\n") +
+      `\n\n${prompt}`;
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const send = (ev: AgentEvent) =>
         controller.enqueue(encoder.encode(JSON.stringify(ev) + "\n"));
       const q = query({
-        prompt,
+        prompt: fullPrompt,
         options: {
           cwd,
           permissionMode: "bypassPermissions",

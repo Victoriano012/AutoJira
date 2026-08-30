@@ -1,5 +1,8 @@
+import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import fs from "fs";
 import os from "os";
+import path from "path";
 
 export const maxDuration = 300;
 
@@ -31,14 +34,31 @@ const GRAPH_SCHEMA = {
 } as const;
 
 export async function POST(req: Request) {
-  const { description, context } = (await req.json()) as {
+  const { description, chain, attachments } = (await req.json()) as {
     description: string;
-    context?: string;
+    /** Inherited context: project + ancestor tickets, outermost first. */
+    chain?: { title: string; description: string }[];
+    attachments?: AttachmentPayload[];
   };
 
+  let cwd = os.tmpdir();
+  let files: string[] = [];
+  if (attachments?.length) {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "autojira-populate-"));
+    files = writeAttachments(cwd, attachments);
+  }
+
   const prompt = [
-    `Break the following project down into a dependency graph of tickets for an AI coding agent to execute one by one. Answer directly from the description — do not use any tools.`,
-    context && `Context — this graph is a subgraph of the ticket: ${context}`,
+    `Break the following project down into a dependency graph of tickets for an AI coding agent to execute one by one.`,
+    files.length
+      ? `First read these attached reference files, then answer:\n${files
+          .map((f) => `- ${f}`)
+          .join("\n")}`
+      : `Answer directly from the description — do not use any tools.`,
+    chain?.length &&
+      `Context — this graph is nested inside (outermost first):\n${chain
+        .map((c) => `- ${c.title}${c.description ? `: ${c.description}` : ""}`)
+        .join("\n")}`,
     `\nProject / task description:\n${description}`,
     `\nRules:
 - 4 to 12 tickets, each a self-contained unit of work an AI coding agent can do in one session.
@@ -55,8 +75,8 @@ export async function POST(req: Request) {
     for await (const msg of query({
       prompt,
       options: {
-        cwd: os.tmpdir(),
-        maxTurns: 4,
+        cwd,
+        maxTurns: files.length ? 16 : 4,
         outputFormat: { type: "json_schema", schema: GRAPH_SCHEMA },
       },
     })) {

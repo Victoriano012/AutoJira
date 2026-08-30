@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { autoLayout } from "@/lib/layout";
 import { useStore } from "@/lib/store";
 import {
+  contextChain,
   GraphEdge,
   graphAtPath,
   newTicket,
@@ -11,6 +12,7 @@ import {
   ticketAtPath,
   TicketType,
 } from "@/lib/types";
+import AttachmentEditor from "./AttachmentEditor";
 
 interface GeneratedTicket {
   title: string;
@@ -25,6 +27,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
   const path = useStore((s) => s.path);
   const setProject = useStore((s) => s.setProject);
   const updateGraph = useStore((s) => s.updateGraph);
+  const updateTicket = useStore((s) => s.updateTicket);
 
   const atRoot = path.length === 0;
   const currentTicket = atRoot
@@ -55,7 +58,14 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description,
-          context: currentTicket?.title,
+          // inherited context: project + ancestors, minus the level being
+          // described in the textarea itself
+          chain: contextChain(project, path)
+            .slice(0, -1)
+            .map(({ title, description }) => ({ title, description })),
+          attachments: contextChain(project, path)
+            .flatMap((l) => l.attachments)
+            .map(({ name, dataUrl }) => ({ name, dataUrl })),
         }),
       });
       if (!res.ok) {
@@ -128,6 +138,22 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => setDescription(e.target.value)}
           autoFocus
         />
+        <div className="mt-3">
+          <AttachmentEditor
+            label={`Context files for the ${atRoot ? "project" : "ticket"} (inherited by all subtickets)`}
+            attachments={
+              (atRoot ? project.attachments : currentTicket?.attachments) ?? []
+            }
+            onChange={(attachments) => {
+              if (atRoot) setProject({ attachments });
+              else if (currentTicket)
+                updateTicket(path.slice(0, -1), currentTicket.id, (t) => ({
+                  ...t,
+                  attachments,
+                }));
+            }}
+          />
+        </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button

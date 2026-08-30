@@ -53,6 +53,7 @@ export const useStore = create<AppState>()(
         name: "Untitled project",
         description: "",
         workspaceDir: "",
+        attachments: [],
         graph: emptyGraph(),
       },
       path: [],
