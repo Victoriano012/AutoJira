@@ -37,8 +37,8 @@ const statusText: Record<TicketStatus, string> = {
 
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
-  if (isTicketDone(t)) return "#10b981";
-  if (t.type === "human_review") return "#fbbf24";
+  if (isTicketDone(t)) return "#6ee7b7";
+  if (t.type === "human_review") return "#fcd34d";
   return "#d4d4d8";
 }
 
@@ -46,7 +46,8 @@ function previewFill(t: Ticket): string {
 function SubgraphPreview({ graph }: { graph: TicketGraph }) {
   const W = 64;
   const H = 40;
-  const PAD = 6;
+  const PADX = 6;
+  const PADY = 3;
   const { centers, sx, sy } = useMemo(() => {
     const fallback = graph.tickets.some((t) => !t.position) ? layoutGraph(graph) : null;
     const centers = new Map<string, { x: number; y: number }>();
@@ -60,8 +61,8 @@ function SubgraphPreview({ graph }: { graph: TicketGraph }) {
     const minY = Math.min(...ys);
     const spanX = Math.max(...xs) - minX;
     const spanY = Math.max(...ys) - minY;
-    const sx = (x: number) => PAD + (spanX ? (x - minX) / spanX : 0.5) * (W - 2 * PAD);
-    const sy = (y: number) => PAD + (spanY ? (y - minY) / spanY : 0.5) * (H - 2 * PAD);
+    const sx = (x: number) => PADX + (spanX ? (x - minX) / spanX : 0.5) * (W - 2 * PADX);
+    const sy = (y: number) => PADY + (spanY ? (y - minY) / spanY : 0.5) * (H - 2 * PADY);
     return { centers, sx, sy };
   }, [graph]);
 
