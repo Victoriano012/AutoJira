@@ -90,10 +90,10 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
               if (ready) void runTicket(path, ticket.id);
             }}
             title={ready ? "Run" : "Waiting on dependencies"}
-            className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] text-white ${
+            className={`text-sm leading-none ${
               ready
-                ? "bg-emerald-600 hover:bg-emerald-700"
-                : "cursor-not-allowed bg-zinc-300"
+                ? "text-emerald-600 hover:text-emerald-500"
+                : "cursor-not-allowed text-zinc-400"
             }`}
           >
             ▶
