@@ -309,9 +309,9 @@ export default function BoardView() {
   if (!graph) return null;
 
   // The graph area draws one nested frame per layer (inset 3 + i*4 px, see
-  // app/page.tsx); keep only a narrow gutter inside the innermost frame so
-  // the column stack uses the space right up to the border.
-  const frameInset = 3 + path.length * 4 + 6;
+  // app/page.tsx); sit essentially flush inside the innermost frame so the
+  // column stack uses the space right up to the border.
+  const frameInset = 3 + path.length * 4 + 2;
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
@@ -342,14 +342,14 @@ export default function BoardView() {
             className={`flex min-h-0 flex-1 flex-col rounded-xl border ${col.tint}`}
           >
             <div
-              className={`flex items-center justify-between px-3 pb-1 pt-2.5 text-xs font-semibold uppercase tracking-wide ${col.header}`}
+              className={`flex items-center justify-between px-2 pb-0.5 pt-1.5 text-xs font-semibold uppercase tracking-wide ${col.header}`}
             >
               <span>{col.title}</span>
               <span className="font-normal opacity-70">
                 {byColumn.get(col.id)!.length}
               </span>
             </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
               {byColumn.get(col.id)!.map((t) => (
                 <div
                   key={t.id}
@@ -499,7 +499,7 @@ export default function BoardView() {
       {/* processing chips */}
       {requests.length > 0 && (
         <div
-          className="space-y-1.5 pb-2"
+          className="space-y-1.5 pb-1.5"
           style={{ marginLeft: frameInset, marginRight: frameInset }}
         >
           {requests.map((r) =>
