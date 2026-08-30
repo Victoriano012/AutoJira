@@ -263,7 +263,12 @@ export default function TicketPanel() {
                 </p>
               );
             case "error":
-              return (
+              // A user-requested stop isn't a failure — show it like info.
+              return entry.text.startsWith("Stopped by user") ? (
+                <p key={i} className="text-xs text-zinc-500 italic">
+                  {entry.text}
+                </p>
+              ) : (
                 <p key={i} className="text-sm text-red-600 whitespace-pre-wrap">
                   {entry.text}
                 </p>
