@@ -58,7 +58,7 @@ export default function Toolbar() {
   }
 
   return (
-    <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
+    <header className="h-20 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
       <button
         className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900"
         onClick={closeProject}
