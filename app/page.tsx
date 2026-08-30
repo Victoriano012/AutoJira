@@ -71,7 +71,14 @@ export default function Home() {
       <Toolbar />
       <div className="flex-1 flex min-h-0">
         <main className="flex-1 relative min-w-0">
-          {showBoard ? <BoardView key={boardKey} /> : <GraphCanvas />}
+          {/* Clip the view to the innermost depth frame so tickets don't
+              slide under the layer borders. */}
+          <div
+            className="absolute overflow-hidden rounded-lg"
+            style={{ inset: 3 + depth * 4 }}
+          >
+            {showBoard ? <BoardView key={boardKey} /> : <GraphCanvas />}
+          </div>
           {/* One nested outline per level — the open project itself counts as
               one level of the meta-graph, so root shows a single frame. */}
           {Array.from({ length: depth + 1 }, (_, i) => (
