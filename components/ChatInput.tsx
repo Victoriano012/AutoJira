@@ -38,7 +38,7 @@ export default function ChatInput({
       <textarea
         ref={ref}
         rows={1}
-        className="block w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-10 text-sm outline-none focus:border-zinc-500 disabled:opacity-50"
+        className="block w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-10 font-mono text-sm outline-none focus:border-zinc-500 disabled:opacity-50"
         placeholder={placeholder}
         value={value}
         disabled={disabled}

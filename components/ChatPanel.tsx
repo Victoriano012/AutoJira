@@ -130,21 +130,21 @@ export default function ChatPanel() {
           m.role === "user" ? (
             <p
               key={i}
-              className="ml-8 rounded-lg bg-violet-600 px-3 py-2 text-sm text-white whitespace-pre-wrap"
+              className="ml-8 rounded-lg bg-violet-600 px-3 py-2 font-mono text-sm text-white whitespace-pre-wrap"
             >
               {m.text}
             </p>
           ) : (
             <p
               key={i}
-              className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-800 whitespace-pre-wrap"
+              className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-800 whitespace-pre-wrap"
             >
               {m.text}
             </p>
           )
         )}
         {pending && (
-          <p className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-500 animate-pulse">
+          <p className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-500 animate-pulse">
             Working…
           </p>
         )}

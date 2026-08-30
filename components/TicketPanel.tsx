@@ -264,30 +264,30 @@ export default function TicketPanel() {
               );
             case "user":
               return (
-                <p key={i} className="text-sm text-sky-700 whitespace-pre-wrap">
+                <p key={i} className="font-mono text-sm text-sky-700 whitespace-pre-wrap">
                   You: {entry.text}
                 </p>
               );
             case "error":
               // A user-requested stop isn't a failure — show it like info.
               return entry.text.startsWith("Stopped by user") ? (
-                <p key={i} className="text-xs text-zinc-500 italic">
+                <p key={i} className="font-mono text-xs text-zinc-500 italic">
                   {entry.text}
                 </p>
               ) : (
-                <p key={i} className="text-sm text-red-600 whitespace-pre-wrap">
+                <p key={i} className="font-mono text-sm text-red-600 whitespace-pre-wrap">
                   {entry.text}
                 </p>
               );
             case "info":
               return (
-                <p key={i} className="text-xs text-zinc-500 italic">
+                <p key={i} className="font-mono text-xs text-zinc-500 italic">
                   {entry.text}
                 </p>
               );
             default:
               return (
-                <p key={i} className="text-sm text-zinc-800 whitespace-pre-wrap">
+                <p key={i} className="font-mono text-sm text-zinc-800 whitespace-pre-wrap">
                   {entry.text}
                 </p>
               );
