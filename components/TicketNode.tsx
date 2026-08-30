@@ -179,7 +179,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             >
               ◼ Stop
             </button>
-          ) : ticket.status !== "todo" ? (
+          ) : ticket.status === "review" || ticket.status === "error" ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
