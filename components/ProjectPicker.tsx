@@ -40,17 +40,15 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
           : "border-zinc-300 hover:border-violet-400"
       }`}
     >
-      <div className="truncate pr-5 text-sm font-semibold text-zinc-900" title={data.name}>
-        {data.name}
-      </div>
-      {/* dir=rtl puts the ellipsis on the left, keeping the end of the path
-          visible; <bdi> keeps the LTR path itself from reordering */}
-      <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
-        <bdi>{id}</bdi>
-      </div>
-      {/* Same run/stop controls a ticket node has — a project is just the
-          outermost ticket. */}
-      <div className="mt-1.5 flex justify-end">
+      {/* Run/stop controls sit beside the name, like a ticket node's row —
+          a project is just the outermost ticket. pr-5 clears the hover trash. */}
+      <div className="flex items-center gap-1.5 pr-5">
+        <div
+          className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900"
+          title={data.name}
+        >
+          {data.name}
+        </div>
         {data.running ? (
           <span className="flex items-center gap-1.5">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
@@ -75,6 +73,11 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
             ▶
           </button>
         )}
+      </div>
+      {/* dir=rtl puts the ellipsis on the left, keeping the end of the path
+          visible; <bdi> keeps the LTR path itself from reordering */}
+      <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
+        <bdi>{id}</bdi>
       </div>
       <button
         className="absolute right-2 top-2 text-[#d64545] opacity-0 hover:text-red-700 group-hover:opacity-100"
