@@ -43,12 +43,6 @@ export default function ConfirmDialog({
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button
-            className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300"
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
             autoFocus
             className={`rounded-lg px-3 py-1.5 text-sm text-white ${
               danger
@@ -58,6 +52,12 @@ export default function ConfirmDialog({
             onClick={onConfirm}
           >
             {confirmLabel}
+          </button>
+          <button
+            className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300"
+            onClick={onCancel}
+          >
+            Cancel
           </button>
         </div>
       </div>

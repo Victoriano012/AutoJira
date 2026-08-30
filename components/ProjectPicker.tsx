@@ -174,19 +174,19 @@ function DeleteModal({
         <h2 className="text-lg font-semibold">Remove “{name}”?</h2>
         <div className="mt-4 flex items-center gap-2">
           <button
+            className="rounded-lg px-3 py-1.5 text-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+            disabled={busy}
+            onClick={() => setConfirmErase(true)}
+          >
+            Delete from computer
+          </button>
+          <button
             autoFocus
             className="rounded-lg px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
             disabled={busy}
             onClick={() => void del("hide")}
           >
             Delete
-          </button>
-          <button
-            className="rounded-lg px-3 py-1.5 text-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-            disabled={busy}
-            onClick={() => setConfirmErase(true)}
-          >
-            Delete from computer
           </button>
           <button
             className="ml-auto rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"

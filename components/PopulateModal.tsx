@@ -225,12 +225,6 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
         )}
         <div className="mt-4 flex justify-end gap-2">
           <button
-            className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300"
-            onClick={close}
-          >
-            Cancel
-          </button>
-          <button
             className="rounded-lg px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
             onClick={submit}
             disabled={loading || !description.trim()}
@@ -243,6 +237,12 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
             ) : (
               "Generate tickets"
             )}
+          </button>
+          <button
+            className="rounded-lg px-3 py-1.5 text-sm bg-zinc-200 hover:bg-zinc-300"
+            onClick={close}
+          >
+            Cancel
           </button>
         </div>
       </div>
