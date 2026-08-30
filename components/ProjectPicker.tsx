@@ -271,7 +271,7 @@ export default function ProjectPicker() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
-        <span className="font-semibold">Projects</span>
+        <span className="text-2xl font-semibold">Projects</span>
         <button
           className="ml-auto rounded-lg px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white"
           onClick={() => setShowModal(true)}
