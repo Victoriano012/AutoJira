@@ -59,8 +59,10 @@ export function GraphCanvas() {
       }, 300);
       if (s.locked) return;
       s.acc += e.deltaX;
-      if (s.acc < -80) {
-        // swipe right, like the browser back gesture
+      // The sign of deltaX for a physical right-swipe flips with the user's
+      // scroll-direction setting, so a strong horizontal accumulation in
+      // either direction means "go back" — one gesture, one action.
+      if (Math.abs(s.acc) > 80) {
         s.locked = true;
         s.acc = 0;
         const st = useStore.getState();
