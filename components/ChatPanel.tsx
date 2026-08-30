@@ -113,7 +113,7 @@ export default function ChatPanel() {
       <div {...handleProps} title="Drag to resize" />
       <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
         <span className="min-w-0 truncate font-medium" title={scopeTitle}>
-          Chat — {scopeTitle}
+          {scopeTitle}
         </span>
         <button
           className="ml-auto text-zinc-400 hover:text-zinc-700"
@@ -125,14 +125,6 @@ export default function ChatPanel() {
       </div>
 
       <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.length === 0 && !pending && (
-          <p className="text-xs text-zinc-400">
-            Talk to this {ticket ? "ticket" : "project"}&apos;s main agent — it
-            knows the work done so far, sees the tickets on this board, and can
-            act in the workspace directory (run commands, host the site, quick
-            fixes…).
-          </p>
-        )}
         {messages.map((m, i) =>
           m.role === "user" ? (
             <p

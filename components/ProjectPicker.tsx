@@ -86,7 +86,7 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
       </div>
       {/* dir=rtl puts the ellipsis on the left, keeping the end of the path
           visible; <bdi> keeps the LTR path itself from reordering */}
-      <div dir="rtl" className="mt-0.5 truncate font-mono text-[10px] text-zinc-400" title={id}>
+      <div dir="rtl" className="mt-2 truncate font-mono text-[10px] text-zinc-400" title={id}>
         <bdi>{id}</bdi>
       </div>
     </div>
@@ -347,7 +347,7 @@ export default function ProjectPicker() {
           + Project
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          className="rounded-lg px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >

@@ -186,8 +186,8 @@ export default function Toolbar() {
         <button
           className={`rounded-lg px-2 py-1.5 text-xl leading-none ${
             chatOpen
-              ? "bg-zinc-200 text-zinc-900"
-              : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+              ? "bg-zinc-200 text-sky-600"
+              : "text-sky-500 hover:bg-zinc-200 hover:text-sky-600"
           }`}
           onClick={toggleChat}
           title="Chat"
@@ -195,7 +195,7 @@ export default function Toolbar() {
           ✦
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+          className="rounded-lg px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
