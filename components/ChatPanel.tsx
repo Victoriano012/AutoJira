@@ -2,22 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { ChatMessage, graphAtPath } from "@/lib/types";
+import { ChatMessage, graphAtPath, ticketAtPath } from "@/lib/types";
 import { usePanelResize } from "@/lib/useResizable";
 
 const EMPTY: ChatMessage[] = []; // stable fallback so the selector snapshot doesn't churn
 
-/** Project chat: an agent with the current board's context that works in the
- * workspace dir (run commands, host the site, quick fixes…). */
+/** Side chat with the main agent of the ticket you're inside (the project
+ * being the outermost "ticket"). Resumes the ticket's own work session, so
+ * the agent knows what it did and can act in the workspace dir. */
 export default function ChatPanel() {
   const open = useStore((s) => s.chatOpen);
   const toggleChat = useStore((s) => s.toggleChat);
-  const messages = useStore((s) => s.project.chat ?? EMPTY);
+  const projectName = useStore((s) => s.project.name);
+  // The ticket whose graph is open; null at the project root.
+  const ticket = useStore((s) =>
+    s.path.length === 0
+      ? null
+      : ticketAtPath(s.project.graph, s.path.slice(0, -1), s.path[s.path.length - 1])
+  );
+  const rootChat = useStore((s) => s.project.chat ?? EMPTY);
+  const messages = ticket ? ticket.chat ?? EMPTY : rootChat;
+  const scopeTitle = ticket ? ticket.title : projectName;
+  const ticketRunning = ticket?.status === "running";
 
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const { width, ref: panelRef, handleProps } = usePanelResize();
+  const busy = pending || ticketRunning;
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -27,19 +39,41 @@ export default function ChatPanel() {
 
   async function send() {
     const text = input.trim();
-    if (!text || pending) return;
+    if (!text || busy) return;
     setInput("");
     setPending(true);
 
+    // Capture the scope at send time, so the reply lands on the right ticket
+    // even if the user navigates away while the agent works.
     const s = useStore.getState();
-    s.setProject({ chat: [...(s.project.chat ?? []), { role: "user", text }] });
+    const parent = s.path.slice(0, -1);
+    const id = s.path[s.path.length - 1];
+    const t = s.path.length ? ticketAtPath(s.project.graph, parent, id) : null;
+
+    const append = (msg: ChatMessage, sessionId?: string) => {
+      const cur = useStore.getState();
+      if (t) {
+        cur.updateTicket(parent, id, (x) => ({
+          ...x,
+          chat: [...(x.chat ?? []), msg],
+          ...(sessionId ? { sessionId } : {}),
+        }));
+      } else {
+        cur.setProject({
+          chat: [...(cur.project.chat ?? []), msg],
+          ...(sessionId ? { chatSessionId: sessionId } : {}),
+        });
+      }
+    };
+    append({ role: "user", text });
+
     const g = graphAtPath(s.project.graph, s.path);
     const graphSummary =
       g?.tickets
         .map(
-          (t) =>
-            `- ${t.title} [${t.status}]${
-              t.description ? `: ${t.description.slice(0, 300)}` : ""
+          (x) =>
+            `- ${x.title} [${x.status}]${
+              x.description ? `: ${x.description.slice(0, 300)}` : ""
             }`
         )
         .join("\n") ?? "";
@@ -52,9 +86,11 @@ export default function ChatPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          sessionId: s.project.chatSessionId,
+          sessionId: t ? t.sessionId : s.project.chatSessionId,
           workspaceDir: s.project.workspaceDir,
           projectName: s.project.name,
+          ticketTitle: t?.title,
+          ticketDescription: t?.description,
           graphSummary,
         }),
       });
@@ -64,11 +100,7 @@ export default function ChatPanel() {
     } catch (err) {
       reply = String(err);
     }
-    const cur = useStore.getState();
-    cur.setProject({
-      chat: [...(cur.project.chat ?? []), { role: "agent", text: reply }],
-      ...(sessionId ? { chatSessionId: sessionId } : {}),
-    });
+    append({ role: "agent", text: reply }, sessionId);
     setPending(false);
   }
 
@@ -80,7 +112,9 @@ export default function ChatPanel() {
     >
       <div {...handleProps} title="Drag to resize" />
       <div className="flex items-center gap-2 p-3 border-b border-zinc-200">
-        <span className="font-medium">Project chat</span>
+        <span className="min-w-0 truncate font-medium" title={scopeTitle}>
+          Chat — {scopeTitle}
+        </span>
         <button
           className="ml-auto text-zinc-400 hover:text-zinc-700"
           title="Close"
@@ -93,9 +127,10 @@ export default function ChatPanel() {
       <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.length === 0 && !pending && (
           <p className="text-xs text-zinc-400">
-            Ask for anything around the project — the agent knows the current
-            tickets and works in the workspace directory (run commands, host
-            the site, quick fixes…).
+            Talk to this {ticket ? "ticket" : "project"}&apos;s main agent — it
+            knows the work done so far, sees the tickets on this board, and can
+            act in the workspace directory (run commands, host the site, quick
+            fixes…).
           </p>
         )}
         {messages.map((m, i) =>
@@ -127,9 +162,15 @@ export default function ChatPanel() {
           <textarea
             className="w-full rounded-lg bg-white border border-zinc-300 p-2 pr-10 text-sm outline-none focus:border-zinc-500 disabled:opacity-50"
             rows={2}
-            placeholder={pending ? "The agent is working…" : "Ask the agent…"}
+            placeholder={
+              ticketRunning
+                ? "The ticket's agent is running…"
+                : pending
+                  ? "The agent is working…"
+                  : "Ask the agent…"
+            }
             value={input}
-            disabled={pending}
+            disabled={busy}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -141,7 +182,7 @@ export default function ChatPanel() {
           <button
             className="absolute right-2 bottom-3 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40"
             onClick={send}
-            disabled={pending || !input.trim()}
+            disabled={busy || !input.trim()}
             title="Send"
           >
             ↑

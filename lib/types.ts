@@ -36,6 +36,9 @@ export interface Ticket {
   position: { x: number; y: number } | null;
   subgraph: TicketGraph;
   sessionId?: string; // Claude session, kept so review feedback resumes the same context
+  /** Side chat with this ticket's main agent — the conversation resumes
+   * sessionId, so the agent already knows the work it did for the ticket. */
+  chat?: ChatMessage[];
   /** human_review only: session of the board's request conversation, so every
    * bottom-bar request on this ticket's kanban board resumes the same chat. */
   boardSessionId?: string;
@@ -63,7 +66,8 @@ export interface Project {
   metaPosition?: { x: number; y: number };
   /** Hidden from the meta-graph; importing the folder again clears it. */
   hidden?: boolean;
-  /** Project chat: an agent with graph context working in the workspace dir. */
+  /** The root level's side chat — a project is just the outermost "ticket",
+   * so these mirror a ticket's sessionId + chat. */
   chatSessionId?: string;
   chat?: ChatMessage[];
   graph: TicketGraph;
