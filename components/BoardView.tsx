@@ -475,12 +475,9 @@ export default function BoardView() {
                   <button
                     className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500"
                     title="Mark this human-review ticket complete — no issues remaining"
-                    onClick={() =>
-                      updateTicket(parentPath, parent.id, (t) => ({
-                        ...t,
-                        status: "done",
-                      }))
-                    }
+                    // Not a plain status write: a run parked on this human gate
+                    // resumes only through approveTicket.
+                    onClick={() => approveTicket(parentPath, parent.id)}
                   >
                     All good
                   </button>
