@@ -13,7 +13,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
-import { ArrowRightIcon, Spinner } from "./icons";
+import { ArrowRightIcon, Spinner, StopSquare } from "./icons";
 import { ackKey, ackSubgraphRun, useTicketAck } from "./useRunAck";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
@@ -234,14 +234,11 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
                 <ArrowRightIcon size={14} />
               </button>
             )}
-            {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
-            <button
+            <StopSquare
               onClick={(e) => {
                 e.stopPropagation();
                 stopTicket(path, ticket.id);
               }}
-              title="Stop"
-              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
             />
             <Spinner />
           </span>

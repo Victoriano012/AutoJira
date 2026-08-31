@@ -273,35 +273,63 @@ const normFile = (f: string) => f.trim().replace(/^\.?\//, "");
  * first — earlier in the graph wins — except that a ticket already running
  * holds its files whatever the order.
  */
-export function fileBlockedBy(
-  g: TicketGraph,
-  ticketId: string
-): { file: string; by: Ticket } | null {
+export interface FileClaim {
+  /** The one file shown for this pair — the same on both cards. */
+  file: string;
+  /** Every file the two tickets share, sorted. */
+  files: string[];
+  /** The ticket holding them. */
+  by: Ticket;
+}
+
+export function fileClaims(g: TicketGraph, ticketId: string): FileClaim[] {
   const i = g.tickets.findIndex((t) => t.id === ticketId);
-  if (i < 0) return null;
-  const mine = (g.tickets[i].files ?? []).map(normFile);
-  if (mine.length === 0) return null;
+  if (i < 0) return [];
+  const me = g.tickets[i];
+  // A ticket that has stopped working wants nothing: it is not waiting, and
+  // nobody is waiting on its behalf.
+  if (isTicketDone(me) || me.status === "review") return [];
+  const mine = new Set((me.files ?? []).map(normFile));
+  if (mine.size === 0) return [];
+  const out: FileClaim[] = [];
   for (let j = 0; j < g.tickets.length; j++) {
     const o = g.tickets[j];
     if (j === i || isTicketDone(o) || o.status === "review") continue;
     if (!o.files?.length) continue;
     if (j > i && o.status !== "running") continue;
-    const file = o.files.map(normFile).find((f) => mine.includes(f));
-    if (file) return { file, by: o };
+    // One claim per ticket, not per file: three shared files are still one
+    // reason to wait. Sorted so both cards name the same one.
+    const files = [...new Set(o.files.map(normFile))].filter((f) => mine.has(f)).sort();
+    if (files.length) out.push({ file: files[0], files, by: o });
   }
-  return null;
+  return out;
 }
 
-/** The files this ticket is holding that another ticket is waiting for — what
- * a running card shows to say why the rest of the board is waiting on it. */
-export function blockingFiles(g: TicketGraph, ticketId: string): string[] {
-  const out = new Set<string>();
+/** The first thing in this ticket's way, or null — the readiness predicate. */
+export function fileBlockedBy(
+  g: TicketGraph,
+  ticketId: string
+): { file: string; by: Ticket } | null {
+  return fileClaims(g, ticketId)[0] ?? null;
+}
+
+/** The mirror of `fileClaims`: the tickets waiting on files this one holds —
+ * what a working card shows to say why the rest of the board is waiting. A
+ * file nobody else wants is not listed: holding it costs no one anything. */
+export function fileBlockees(
+  g: TicketGraph,
+  ticketId: string
+): { file: string; files: string[]; who: Ticket }[] {
+  const out: { file: string; files: string[]; who: Ticket }[] = [];
   for (const o of g.tickets) {
     if (o.id === ticketId) continue;
-    const claim = fileBlockedBy(g, o.id);
-    if (claim?.by.id === ticketId) out.add(claim.file);
+    for (const claim of fileClaims(g, o.id)) {
+      if (claim.by.id === ticketId) {
+        out.push({ file: claim.file, files: claim.files, who: o });
+      }
+    }
   }
-  return [...out];
+  return out;
 }
 
 /** True if running the graph now could make progress somewhere inside.

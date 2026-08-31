@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 import { memo, useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
 import GearIcon from "./GearIcon";
+import { StopSquare } from "./icons";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
@@ -62,13 +63,11 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
         {data.running ? (
           <span className="flex items-center gap-1.5">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-            <button
+            <StopSquare
               onClick={(e) => {
                 e.stopPropagation();
                 stopProject(id);
               }}
-              title="Stop"
-              className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
             />
           </span>
         ) : (

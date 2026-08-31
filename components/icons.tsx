@@ -69,13 +69,42 @@ export function ArrowRightIcon({ size }: { size?: number }) {
   );
 }
 
-/** Two bars: pause the agent working on a ticket. */
-export function PauseIcon({ size }: { size?: number }) {
+/** Stop a running agent. A sized square, not the ◼ glyph: font rendering made
+ * it tiny. One control, so every stop in the app looks the same. */
+export function StopSquare({
+  onClick,
+  title = "Stop",
+}: {
+  onClick?: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
   return (
-    <Svg size={size}>
-      <line x1="9" y1="4" x2="9" y2="20" />
-      <line x1="15" y1="4" x2="15" y2="20" />
-    </Svg>
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
+    />
+  );
+}
+
+/** Open palm: this ticket is holding a file, so other tickets wait for it.
+ * Filled rather than stroked — at 12px a stroked hand is a smudge. */
+export function HandIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className="shrink-0"
+    >
+      <path d="M4.5 11h15v4A7 7 0 0 1 12.5 22h-1A7 7 0 0 1 4.5 15z" />
+      <rect x="5.2" y="5.5" width="3.6" height="7" rx="1.8" />
+      <rect x="10.2" y="3" width="3.6" height="9.5" rx="1.8" />
+      <rect x="15.2" y="5.5" width="3.6" height="7" rx="1.8" />
+    </svg>
   );
 }
 

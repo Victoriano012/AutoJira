@@ -11,12 +11,14 @@ import {
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
-import { PauseIcon, PlayIcon, Spinner } from "./icons";
+import { HandIcon, Spinner, StopSquare } from "./icons";
 import {
   contextChain,
   dependenciesOf,
   GraphEdge,
   graphAtPath,
+  fileBlockees,
+  fileClaims,
   isTicketDone,
   newTicket,
   satisfiesDependents,
@@ -58,19 +60,23 @@ const COLUMNS: {
   },
 ];
 
-function columnOf(t: Ticket, ready: boolean): ColumnId {
+function columnOf(t: Ticket, ready: boolean, fileBlocked: boolean): ColumnId {
   if (isTicketDone(t)) return "done";
   if (t.status === "review") return "review";
   // Paused is the person's own block: the card moves out of Working the moment
   // they press it, without waiting for the agent to wind down.
   if (t.paused) return "blocked";
   if (t.status === "running" || t.status === "error") return "working";
+  // Another card is going to edit a file this one names: the scheduler will not
+  // dispatch it, so Working would be a lie.
+  if (fileBlocked) return "blocked";
   return ready ? "working" : "blocked"; // todo
 }
 
 interface GeneratedTicket {
   title: string;
   description: string;
+  files: string[];
   dependsOn: number[];
   dependsOnExisting: number[];
 }
@@ -87,6 +93,25 @@ const REJECT_MAX_HEIGHT = 42;
 /** Sent to the agent when a card is rejected with nothing typed. */
 const DEFAULT_REJECTION =
   "This isn't finished. Go back over the work, find what is missing or wrong, and complete it properly.";
+
+/** Unsent request text, per board, kept outside React so a remount can't eat
+ * it. sessionStorage: it belongs to this tab, and nothing here needs a server. */
+const DRAFT_KEY = "autojira-board-draft:";
+function readDraft(pathKey: string) {
+  try {
+    return sessionStorage.getItem(DRAFT_KEY + pathKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+function writeDraft(pathKey: string, value: string) {
+  try {
+    if (value) sessionStorage.setItem(DRAFT_KEY + pathKey, value);
+    else sessionStorage.removeItem(DRAFT_KEY + pathKey);
+  } catch {
+    // Private mode or a blocked store: the draft just isn't durable.
+  }
+}
 
 interface DepLine {
   id: string;
@@ -136,8 +161,21 @@ export default function BoardView() {
 
   // ---- bottom-bar change requests (one Claude conversation per board) ----
   const [requests, setRequests] = useState<PendingRequest[]>([]);
-  const [draft, setDraft] = useState("");
+  // The draft outlives the input, per board: a remount — a reload, a dev-server
+  // restart, navigating away and back — must never eat what someone was
+  // halfway through typing. It clears only when the request is actually sent.
+  const [draft, setDraftState] = useState(() => readDraft(pathKey));
+  const setDraft = (v: string) => {
+    setDraftState(v);
+    writeDraft(pathKey, v);
+  };
   const chainRef = useRef<Promise<void>>(Promise.resolve());
+
+  // ---- Done column: follow new arrivals ----
+  const doneListRef = useRef<HTMLDivElement>(null);
+  const doneIds = useRef(new Set<string>());
+  const doneSeeded = useRef(false);
+  const doneAtBottom = useRef(true);
 
   function submitRequest() {
     const text = draft.trim();
@@ -150,6 +188,22 @@ export default function BoardView() {
     chainRef.current = chainRef.current
       .then(() => processRequest(id, text))
       .catch(() => {});
+  }
+
+  /** Send a failed request again, unchanged — nothing was written. */
+  function retryRequest(id: string) {
+    const r = requests.find((x) => x.id === id);
+    if (!r) return;
+    setRequests((rs) => rs.map((x) => (x.id === id ? { ...x, error: undefined } : x)));
+    chainRef.current = chainRef.current
+      .then(() => processRequest(id, r.text))
+      .catch(() => {});
+  }
+
+  /** Giving up on a failed request hands the typing back rather than losing it. */
+  function dismissRequest(r: PendingRequest) {
+    setRequests((rs) => rs.filter((x) => x.id !== r.id));
+    setDraft(draft.trim() ? `${draft.trim()} ${r.text}` : r.text);
   }
 
   async function processRequest(id: string, text: string) {
@@ -170,6 +224,7 @@ export default function BoardView() {
             title: t.title,
             description: t.description.slice(0, 400),
             status: t.status,
+            files: t.files ?? [],
           })),
           chain: parent.boardSessionId
             ? undefined
@@ -197,6 +252,9 @@ export default function BoardView() {
           description: gt.description,
           type: "human_review",
           blocking: false,
+          // Declared, never inferred: the board serialises cards that name the
+          // same file so two agents never edit it at once.
+          files: gt.files ?? [],
         })
       );
       const edges: GraphEdge[] = [];
@@ -442,10 +500,41 @@ export default function BoardView() {
       .map((d) => d.title)
       .join(", ") || "waiting on dependencies";
 
+  // File contention, straight off the helpers so the board says exactly what
+  // the scheduler does: who waits on a file, and who is holding one.
+  const claimsOf = (t: Ticket) => fileClaims(graph, t.id);
+  const blockeesOf = (t: Ticket) => fileBlockees(graph, t.id);
+
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
-    byColumn.get(columnOf(t, isReady(t)))!.push(t);
+    byColumn.get(columnOf(t, isReady(t), claimsOf(t).length > 0))!.push(t);
   }
+  const doneKey = byColumn
+    .get("done")!
+    .map((t) => t.id)
+    .join(",");
+
+  // A card landing in Done scrolls the column down to it — but only if the
+  // person was already at the bottom, so scrolling up to read something older
+  // is never yanked away. `doneAtBottom` tracks their last scroll, not the
+  // current geometry, which drifts as the column grows.
+  useEffect(() => {
+    const ids = doneKey ? doneKey.split(",") : [];
+    const arrived =
+      doneSeeded.current && ids.some((id) => !doneIds.current.has(id));
+    doneIds.current = new Set(ids);
+    doneSeeded.current = true;
+    const el = doneListRef.current;
+    if (!el) return;
+    if (arrived && doneAtBottom.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      return;
+    }
+    // Nothing arrived, so this geometry is the person's own position — the
+    // reading the next arrival is judged against. (Once a card lands, the
+    // column has already grown and it is too late to ask.)
+    doneAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+  }, [doneKey]);
 
   const cardRef = (id: string) => (el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(id, el);
@@ -484,8 +573,38 @@ export default function BoardView() {
                 {byColumn.get(col.id)!.length}
               </span>
             </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-              {byColumn.get(col.id)!.map((t) => (
+            <div
+              ref={col.id === "done" ? doneListRef : undefined}
+              onScroll={
+                col.id === "done"
+                  ? (e) => {
+                      const el = e.currentTarget;
+                      doneAtBottom.current =
+                        el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+                    }
+                  : undefined
+              }
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2"
+            >
+              {byColumn.get(col.id)!.map((t) => {
+                // Files this card waits for, and files it holds that somebody
+                // else waits for. Both lists sit in the card's bottom-left, with
+                // the card's own control right-aligned on the last of them.
+                const claims = claimsOf(t);
+                // One line per ticket, not per file: three shared files are one
+                // reason. Both cards name the same file; the rest are on hover.
+                const heldLines = blockeesOf(t).map((b) => (
+                  <div
+                    key={b.who.id}
+                    title={`${b.who.title} is waiting for ${b.files.join(", ")}`}
+                    className="flex min-w-0 items-center gap-1 text-zinc-400"
+                  >
+                    <HandIcon />
+                    <span className="shrink-0">{b.file}</span>
+                    <span className="truncate opacity-80">{b.who.title}</span>
+                  </div>
+                ));
+                return (
                 // The wrapper is what the effect above measures; the card
                 // inside it is what the FLIP animation moves.
                 <div key={t.id} ref={cardRef(t.id)}>
@@ -520,15 +639,28 @@ export default function BoardView() {
                       </div>
                     )}
 
-                    {col.id === "blocked" &&
-                      (t.paused ? (
-                        // Blocked by the person, not by dependencies: it says so
-                        // and offers the way back. Dependencies it still waits on
-                        // outrank that — running it then is not possible.
-                        <div
-                          className="mt-2 flex items-center gap-2 text-[11px]"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                    {col.id === "blocked" && (
+                      // Every reason this card is not moving, stacked; the way
+                      // back out (paused only) sits on the last of them.
+                      <div className="mt-2 flex items-end justify-between gap-2 text-[11px]">
+                        <div className="min-w-0 space-y-0.5 text-zinc-400">
+                          {t.paused && (
+                            <div>{t.status === "running" ? "Stopping…" : "Paused"}</div>
+                          )}
+                          {!isReady(t) && <div>⛔ {unmetTitles(t)}</div>}
+                          {claims.map((c) => (
+                            <div
+                              key={c.by.id}
+                              title={`Waiting for ${c.files.join(", ")}, held by ${c.by.title}`}
+                              className="flex min-w-0 items-center gap-1"
+                            >
+                              <span className="shrink-0">⛔ {c.file}</span>
+                              <span className="truncate opacity-80">{c.by.title}</span>
+                            </div>
+                          ))}
+                          {heldLines}
+                        </div>
+                        {t.paused && (
                           <button
                             disabled={!isReady(t) || t.status === "running"}
                             title={
@@ -538,48 +670,45 @@ export default function BoardView() {
                                   ? "Run"
                                   : "Waiting on dependencies"
                             }
-                            className="flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-zinc-100"
-                            onClick={() => resume(t.id)}
+                            className={`shrink-0 text-sm leading-none ${
+                              isReady(t) && t.status !== "running"
+                                ? "text-emerald-600 hover:text-emerald-500"
+                                : "cursor-not-allowed text-zinc-400"
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resume(t.id);
+                            }}
                           >
-                            <PlayIcon size={9} />
-                            Run
+                            ▶
                           </button>
-                          <span className="text-zinc-400">
-                            {t.status === "running"
-                              ? "Stopping…"
-                              : isReady(t)
-                                ? "Paused"
-                                : `⛔ ${unmetTitles(t)}`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-[11px] text-zinc-400">
-                          ⛔ {unmetTitles(t)}
-                        </div>
-                      ))}
+                        )}
+                      </div>
+                    )}
 
-                    {col.id === "working" &&
-                      (t.status === "running" ? (
-                        // The spinner alone says the agent is on it; pause sits
-                        // beside it, on the right where the eye already is.
-                        <div
-                          className="mt-2 flex items-center justify-end gap-2"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            title="Pause"
-                            className="text-zinc-400 hover:text-zinc-700"
-                            onClick={() => pause(t.id)}
-                          >
-                            <PauseIcon size={13} />
-                          </button>
-                          <Spinner className="h-2.5 w-2.5" />
+                    {col.id === "working" && (
+                      // The spinner alone says the agent is on it; stop sits
+                      // beside it, on the right where the eye already is.
+                      <div className="mt-2 flex items-end justify-between gap-2 text-[11px]">
+                        <div className="min-w-0 space-y-0.5">
+                          {t.status === "error" ? (
+                            <div className="text-red-500">Failed</div>
+                          ) : t.status === "running" ? null : (
+                            <div className="text-blue-500/80">Queued</div>
+                          )}
+                          {heldLines}
                         </div>
-                      ) : t.status === "error" ? (
-                        <div className="mt-2 flex items-center gap-2 text-[11px]">
-                          <span className="text-red-500">Failed</span>
+                        {t.status === "running" ? (
+                          <div
+                            className="flex shrink-0 items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <StopSquare onClick={() => pause(t.id)} />
+                            <Spinner className="h-2.5 w-2.5" />
+                          </div>
+                        ) : t.status === "error" ? (
                           <button
-                            className="rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
+                            className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
                             onClick={(e) => {
                               e.stopPropagation();
                               void runTicket(path, t.id);
@@ -587,12 +716,9 @@ export default function BoardView() {
                           >
                             ↻ Retry
                           </button>
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-[11px] text-blue-500/80">
-                          Queued
-                        </div>
-                      ))}
+                        ) : null}
+                      </div>
+                    )}
 
                     {col.id === "review" && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>
@@ -645,7 +771,8 @@ export default function BoardView() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* pinned column footer — resolve/reopen this human-review ticket */}
@@ -726,10 +853,15 @@ export default function BoardView() {
                   {r.text} — {r.error}
                 </span>
                 <button
+                  className="shrink-0 rounded-md bg-red-100 px-2 py-0.5 text-red-700 hover:bg-red-200"
+                  onClick={() => retryRequest(r.id)}
+                >
+                  ↻ Retry
+                </button>
+                <button
+                  title="Dismiss and put the text back in the box"
                   className="shrink-0 text-red-400 hover:text-red-600"
-                  onClick={() =>
-                    setRequests((rs) => rs.filter((x) => x.id !== r.id))
-                  }
+                  onClick={() => dismissRequest(r)}
                 >
                   ✕
                 </button>
