@@ -23,7 +23,7 @@ import {
   fileClaims,
   isTicketDone,
   newTicket,
-  satisfiesDependents,
+  satisfiesDependentsOnBoard,
   Ticket,
   ticketAtPath,
 } from "@/lib/types";
@@ -502,7 +502,7 @@ export default function BoardView() {
       newLines.push({
         id: e.id,
         d,
-        unmet: !!src && !satisfiesDependents(src),
+        unmet: !!src && !satisfiesDependentsOnBoard(src),
       });
     }
     const key = newLines.map((l) => `${l.id}${l.d}${l.unmet}`).join("|");
@@ -520,17 +520,17 @@ export default function BoardView() {
   const frameInset = 3 + path.length * 4 + 2;
 
   const isReady = (t: Ticket) =>
-    dependenciesOf(graph, t.id).every(satisfiesDependents);
+    dependenciesOf(graph, t.id).every(satisfiesDependentsOnBoard);
   const unmetTitles = (t: Ticket) =>
     dependenciesOf(graph, t.id)
-      .filter((d) => !satisfiesDependents(d))
+      .filter((d) => !satisfiesDependentsOnBoard(d))
       .map((d) => d.title)
       .join(", ") || "waiting on dependencies";
 
   // File contention, straight off the helpers so the board says exactly what
   // the scheduler does: who waits on a file, and who is holding one.
-  const claimsOf = (t: Ticket) => fileClaims(graph, t.id);
-  const blockeesOf = (t: Ticket) => fileBlockees(graph, t.id);
+  const claimsOf = (t: Ticket) => fileClaims(graph, t.id, true);
+  const blockeesOf = (t: Ticket) => fileBlockees(graph, t.id, true);
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
@@ -539,7 +539,7 @@ export default function BoardView() {
     // Blocked if another card holds its file. It leaves review on the click,
     // not a round-trip later.
     const asked = rejected[t.id] ? { ...t, status: "todo" as const } : t;
-    byColumn.get(boardColumn(graph, asked))!.push(t);
+    byColumn.get(boardColumn(graph, asked, true))!.push(t);
   }
   const doneKey = byColumn
     .get("done")!

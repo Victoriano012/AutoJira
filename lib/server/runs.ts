@@ -8,6 +8,7 @@ import {
   isTicketDone,
   Project,
   satisfiesDependents,
+  satisfiesDependentsOnBoard,
   Ticket,
   ticketAtPath,
   TicketGraph,
@@ -264,7 +265,7 @@ export async function sendFeedback(
   // message waits with the ticket rather than starting a second agent in that
   // file; the scheduler delivers it (see runTicket) as soon as the file frees.
   const g = graphAtPath(project.graph, path);
-  const claim = g && fileBlockedBy(g, ticketId);
+  const claim = g && fileBlockedBy(g, ticketId, isBoard(dir, path));
   if (claim) {
     const key = ticketScope(dir, path, ticketId);
     const queued = registry.pendingFeedback.get(key);
@@ -375,7 +376,7 @@ export async function runTicket(
   // The scheduler filters these out, so this catches the person pressing Run on
   // a card whose file someone else is already in. Saying so beats doing nothing.
   const g = graphAtPath(project.graph, path);
-  const claim = g && fileBlockedBy(g, ticketId);
+  const claim = g && fileBlockedBy(g, ticketId, isBoard(dir, path));
   if (claim) {
     store.appendLog(dir, path, ticketId, {
       kind: "info",
@@ -425,16 +426,20 @@ export async function runTicket(
  * decide whether starting a scheduler is worth it — one definition, so the two
  * can never disagree and spin. */
 function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
+  // On a board a card in review is finished agent work, not a gate: the cards
+  // after it may start. In the graph view a human ticket holds them.
+  const onBoard = isBoard(dir, path);
+  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
   return g.tickets.filter((t) => {
     if (isTicketDone(t)) return false;
     // Stopped by the person: `paused` is the persisted version of the same
     // thing, so a card they stopped stays stopped across a server restart.
     if (t.paused) return false;
     if (registry.userStopped.has(ticketScope(dir, path, t.id))) return false;
-    if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
+    if (!dependenciesOf(g, t.id).every(satisfies)) return false;
     // Never two agents in one file: a ticket whose files another unfinished
     // ticket is touching waits, without any edge between them.
-    if (fileBlockedBy(g, t.id)) return false;
+    if (fileBlockedBy(g, t.id, onBoard)) return false;
     // Parents are ready only while something inside can actually progress —
     // and only if nothing is already draining that subgraph. Dispatching a
     // parent whose child loop is running returns instantly (runGraph is a

@@ -204,11 +204,32 @@ export function isTicketDone(t: Ticket): boolean {
   return t.status === "done";
 }
 
-/** Whether dependents of this ticket may start: only once it is done. A
- * human-review ticket therefore holds its dependents until the person
- * approves it. */
+/**
+ * Whether dependents of this ticket may start, in the graph view.
+ *
+ * Reaching review is the agent finishing: its changes are on disk, so whatever
+ * was waiting for this work can build on it without waiting for a person. A
+ * human ticket is the exception — it is a gate, there to be signed off — so it
+ * holds its dependents until the person marks it done.
+ *
+ * Takes exactly one argument, and so does its board twin: both are passed
+ * straight to `.every`/`.filter`, which would hand a second parameter the
+ * element index.
+ */
 export function satisfiesDependents(t: Ticket): boolean {
-  return isTicketDone(t);
+  if (t.type === "human_review") return isTicketDone(t);
+  return t.status === "review" || isTicketDone(t);
+}
+
+/**
+ * The same question on a kanban board, where the answer differs. Every card
+ * there is a human review — the ✓/✕ is how the person files it — but the board
+ * is not a column of gates: Ready for review means the agent finished, exactly
+ * as it does for an AI ticket, so a card in it never holds the rest of the
+ * board. The graph view's gates are untouched.
+ */
+export function satisfiesDependentsOnBoard(t: Ticket): boolean {
+  return t.status === "review" || isTicketDone(t);
 }
 
 /** An agent is genuinely at work at or beneath this ticket. A ticket with a
@@ -282,7 +303,7 @@ export interface FileClaim {
  * see it in Working. */
 export type BoardColumn = "blocked" | "working" | "review" | "done";
 
-export function boardColumn(g: TicketGraph, t: Ticket): BoardColumn {
+export function boardColumn(g: TicketGraph, t: Ticket, onBoard = false): BoardColumn {
   if (isTicketDone(t)) return "done";
   if (t.status === "review") return "review";
   // Paused is the person's own block: the card leaves Working the moment they
@@ -290,11 +311,16 @@ export function boardColumn(g: TicketGraph, t: Ticket): BoardColumn {
   if (t.paused) return "blocked";
   if (t.status === "running" || t.status === "error") return "working";
   // todo: dispatchable, unless a dependency or another card's file says no.
-  if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return "blocked";
-  return fileBlockedBy(g, t.id) ? "blocked" : "working";
+  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
+  if (!dependenciesOf(g, t.id).every(satisfies)) return "blocked";
+  return fileBlockedBy(g, t.id, onBoard) ? "blocked" : "working";
 }
 
-export function fileClaims(g: TicketGraph, ticketId: string): FileClaim[] {
+export function fileClaims(
+  g: TicketGraph,
+  ticketId: string,
+  onBoard = false
+): FileClaim[] {
   const i = g.tickets.findIndex((t) => t.id === ticketId);
   if (i < 0) return [];
   const me = g.tickets[i];
@@ -315,7 +341,7 @@ export function fileClaims(g: TicketGraph, ticketId: string): FileClaim[] {
     // Only a card in Working holds anything. Asked last, and only of a card
     // that shares a file: the answer can recurse (into strictly earlier
     // tickets, so it always settles), and this way it rarely has to.
-    if (files.length && boardColumn(g, o) === "working") {
+    if (files.length && boardColumn(g, o, onBoard) === "working") {
       out.push({ file: files[0], files, by: o });
     }
   }
@@ -325,9 +351,10 @@ export function fileClaims(g: TicketGraph, ticketId: string): FileClaim[] {
 /** The first thing in this ticket's way, or null — the readiness predicate. */
 export function fileBlockedBy(
   g: TicketGraph,
-  ticketId: string
+  ticketId: string,
+  onBoard = false
 ): { file: string; by: Ticket } | null {
-  return fileClaims(g, ticketId)[0] ?? null;
+  return fileClaims(g, ticketId, onBoard)[0] ?? null;
 }
 
 /** The mirror of `fileClaims`: the tickets waiting on files this one holds —
@@ -335,14 +362,15 @@ export function fileBlockedBy(
  * file nobody else wants is not listed: holding it costs no one anything. */
 export function fileBlockees(
   g: TicketGraph,
-  ticketId: string
+  ticketId: string,
+  onBoard = false
 ): { file: string; files: string[]; who: Ticket }[] {
   const out: { file: string; files: string[]; who: Ticket }[] = [];
   for (const o of g.tickets) {
     // Only a card that is actually stuck is waiting: a card in review would
     // wait if it went back to work, but nobody is held up on its behalf now.
-    if (o.id === ticketId || boardColumn(g, o) !== "blocked") continue;
-    for (const claim of fileClaims(g, o.id)) {
+    if (o.id === ticketId || boardColumn(g, o, onBoard) !== "blocked") continue;
+    for (const claim of fileClaims(g, o.id, onBoard)) {
       if (claim.by.id === ticketId) {
         out.push({ file: claim.file, files: claim.files, who: o });
       }
