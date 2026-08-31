@@ -27,9 +27,12 @@ export async function GET(_req: Request, ctx: Ctx) {
 export async function PUT(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const dir = decodeURIComponent(id);
-  const current = ensureLoaded(dir);
-  if (!current) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!ensureLoaded(dir)) return Response.json({ error: "Not found" }, { status: 404 });
   const { data, edits } = (await req.json()) as { data: Project; edits?: RunEdit[] };
+  // Read the server's copy after the body, not before: a run writing during the
+  // parse would otherwise be merged away by a snapshot taken too early.
+  const current = getProject(dir);
+  if (!current) return Response.json({ error: "Not found" }, { status: 404 });
   const merged = applyRunEdits(
     mergeRunState(data, current),
     edits ?? [],
