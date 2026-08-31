@@ -1,9 +1,12 @@
-/** AutoJira mark: the smallest possible DAG — one ticket card fanning out into
- * two along an orthogonal edge, the way the graph editor routes them. Cards are
- * filled, not stroked, so they survive a 16px browser tab; every coordinate is
- * a multiple of 1.5 so the shapes land on whole pixels at both 16px and 32px.
- * Cards and edges take currentColor; the violet card (the one that's next) is
- * the only hard-coded colour, so the mark still reads in one flat tone.
+/** AutoJira mark: the smallest possible DAG — two ticket cards converging on
+ * one, joined by the orthogonal edge the graph editor draws. Convergence, not
+ * divergence: a ticket waiting on its dependencies is the shape every board in
+ * this app has. Colours are the app's own status palette, so the mark reads as
+ * a live graph: emerald = done, amber = waiting on a human, zinc = still to do.
+ * Cards are filled, not stroked, so they survive a 16px browser tab, and every
+ * coordinate is a multiple of 1.5 so the shapes land on whole pixels at both
+ * 16px and 32px. Only the edge takes currentColor — it's the dark spine that
+ * keeps the mark a graph instead of three floating swatches.
  * Keep this and app/icon.svg in sync — same geometry, explicit colours there. */
 export default function Logo({
   size = 20,
@@ -22,14 +25,14 @@ export default function Logo({
       aria-hidden
     >
       <path
-        d="M9 12H12M12 6V18M12 6H15M12 18H15"
+        d="M9 6H12M9 18H12M12 6V18M12 12H15"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
       />
-      <rect x="1.5" y="9" width="7.5" height="6" rx="1.2" fill="currentColor" />
-      <rect x="15" y="15" width="7.5" height="6" rx="1.2" fill="currentColor" />
-      <rect x="15" y="3" width="7.5" height="6" rx="1.2" fill="#8b5cf6" />
+      <rect x="1.5" y="3" width="7.5" height="6" rx="1.2" fill="#10b981" />
+      <rect x="1.5" y="15" width="7.5" height="6" rx="1.2" fill="#f59e0b" />
+      <rect x="15" y="9" width="7.5" height="6" rx="1.2" fill="#71717a" />
     </svg>
   );
 }
