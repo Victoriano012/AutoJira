@@ -101,6 +101,29 @@ export default function BoardView() {
 
   const graph = graphAtPath(project.graph, path);
 
+  // ---- grow-in for cards that have just turned up ----
+  // The board seeds itself with whatever it opens with, so nothing animates on
+  // load or when a project opens; only an id it has never drawn grows in. The
+  // id stops being new once the animation is over, because a column move
+  // remounts the card and would otherwise replay it.
+  const seenIds = useRef(new Set<string>());
+  const seededFor = useRef<string | null>(null);
+  const enteringIds = useRef(new Set<string>());
+  if (graph) {
+    if (seededFor.current !== pathKey) {
+      // First render of this board (or of another one): seed, don't animate.
+      seededFor.current = pathKey;
+      seenIds.current = new Set(graph.tickets.map((t) => t.id));
+    } else {
+      for (const t of graph.tickets) {
+        if (seenIds.current.has(t.id)) continue;
+        seenIds.current.add(t.id);
+        enteringIds.current.add(t.id);
+        setTimeout(() => enteringIds.current.delete(t.id), 400);
+      }
+    }
+  }
+
   // ---- bottom-bar change requests (one Claude conversation per board) ----
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [draft, setDraft] = useState("");
@@ -427,6 +450,8 @@ export default function BoardView() {
                       setSelectedId((id) => (id === t.id ? null : t.id));
                     }}
                     className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
+                      enteringIds.current.has(t.id) ? "ticket-appear " : ""
+                    }${
                       t.id === selectedId
                         ? "border-violet-500"
                         : t.status === "error"

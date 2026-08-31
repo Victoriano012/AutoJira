@@ -4,6 +4,7 @@ import { layoutGraph, NODE_HEIGHT, NODE_WIDTH } from "@/lib/layout";
 import { runTicket, stopTicket } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import {
+  graphAtPath,
   isTicketDone,
   isTicketRunning,
   isTicketWaiting,
@@ -28,6 +29,22 @@ const borderByStatus: Record<TicketStatus, string> = {
   done: "border-emerald-500",
   error: "border-red-500",
 };
+
+/**
+ * Ids the canvas has already drawn. The first node of a graph level seeds the
+ * whole level, so opening a project or drilling into a subgraph animates
+ * nothing — only a ticket that turns up afterwards is new, and it grows in.
+ */
+const drawn = new Set<string>();
+function isNewOnCanvas(id: string, path: string[]): boolean {
+  if (drawn.has(id)) return false;
+  const project = useStore.getState().project;
+  const siblings = project ? (graphAtPath(project.graph, path)?.tickets ?? []) : [];
+  const seeded = siblings.some((s) => drawn.has(s.id));
+  for (const s of siblings) drawn.add(s.id);
+  drawn.add(id);
+  return seeded;
+}
 
 /** Green when done, amber when an unfinished human-review ticket, gray otherwise. */
 function previewFill(t: Ticket): string {
@@ -92,6 +109,9 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const running = isTicketRunning(ticket) || swept;
   const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
 
+  // Grows in once, on the render that first puts this ticket on the canvas.
+  const [appeared] = useState(() => isNewOnCanvas(ticket.id, path));
+
   // One-shot nudge, either on the transition into Waiting or at the end of
   // that swept beat — a ticket parked on a human is usually already Waiting
   // when the run reaches it, and the nudge is the whole point of the feedback.
@@ -134,8 +154,8 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   return (
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
-        nudge ? "ticket-waiting-nudge " : ""
-      }${
+        appeared ? "ticket-appear " : ""
+      }${nudge ? "ticket-waiting-nudge " : ""}${
         selected
           ? "border-violet-500"
           : running

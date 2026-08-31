@@ -74,3 +74,21 @@ body {
     animation: none;
   }
 }
+
+/* One-shot grow-in for a ticket that has just turned up, on the board and on
+   the canvas alike — only ever handed to an id its view has not drawn before,
+   so it never plays on load or when a card moves column. */
+@keyframes ticket-appear {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.ticket-appear {
+  animation: ticket-appear 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket-appear {
+    animation: none;
+  }
+}
