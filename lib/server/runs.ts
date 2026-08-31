@@ -215,6 +215,40 @@ function isBoard(dir: string, path: string[]): boolean {
   return parent?.type === "human_review";
 }
 
+/**
+ * The person's stop, written where everyone can see it.
+ *
+ * `userStopped` lives in the registry, so it is invisible to the board: a card
+ * held out of the queue by it alone sits in the Working column labelled Queued
+ * with nothing ever starting it, which is exactly the lie this whole invariant
+ * exists to prevent. `paused` is the persisted half of the same fact — the
+ * board reads it (`boardColumn` → Blocked, "Paused", with a Run button back)
+ * and it survives a server restart, which the skip never did.
+ *
+ * Only ever written once the ticket is out of "running": the board clears a
+ * pause it sees on a card whose agent is still winding down, so a run being
+ * aborted parks itself in the same write that settles its status (see
+ * `runLeafTicket`).
+ *
+ * And only on "todo", the one status that can lie: that is the card the board
+ * shows in Working as Queued. A card in review or error already says what it
+ * is, and parking it would move it out of the column the person left it in.
+ */
+function park(dir: string, path: string[], ticketId: string): void {
+  const project = store.getProject(dir);
+  const t = project && ticketAtPath(project.graph, path, ticketId);
+  if (!t || t.paused || t.status !== "todo" || isTicketDone(t)) return;
+  store.updateTicket(dir, path, ticketId, (x) => ({ ...x, paused: true }));
+}
+
+/** The other half of lifting the skip: pressing run un-parks the ticket, or it
+ * would be blocked by the stop it was just started out of. */
+function unpark(dir: string, path: string[], ticketId: string): void {
+  const project = store.getProject(dir);
+  const t = project && ticketAtPath(project.graph, path, ticketId);
+  if (t?.paused) store.updateTicket(dir, path, ticketId, (x) => ({ ...x, paused: false }));
+}
+
 /** Run one leaf ticket (no subgraph) with the agent. */
 async function runLeafTicket(dir: string, path: string[], ticketId: string): Promise<void> {
   const project = store.getProject(dir);
@@ -231,6 +265,9 @@ async function runLeafTicket(dir: string, path: string[], ticketId: string): Pro
   });
 
   const summary = text.length > 1500 ? text.slice(0, 1500) + "…" : text;
+  // The person's stop and the settled status land in one write: a card that
+  // went back to todo because they stopped it must never be seen as Queued.
+  const stopped = registry.userStopped.has(ticketScope(dir, path, ticketId));
   // Skip the final write if something else already moved the ticket out of
   // "running" (e.g. a board rejection reset it to todo while aborting).
   // A user stop is not a failure: the ticket goes back to todo, and "error"
@@ -239,7 +276,7 @@ async function runLeafTicket(dir: string, path: string[], ticketId: string): Pro
     t.status !== "running"
       ? t
       : aborted
-        ? { ...t, status: "todo" }
+        ? { ...t, status: "todo", ...(stopped ? { paused: true } : {}) }
         : {
             ...t,
             status: !ok ? "error" : t.type === "human_review" ? "review" : "done",
@@ -368,6 +405,7 @@ export async function runTicket(
   ticketId: string
 ): Promise<void> {
   registry.userStopped.delete(ticketScope(dir, path, ticketId));
+  unpark(dir, path, ticketId);
   const project = store.getProject(dir);
   if (!project) return;
   const ticket = ticketAtPath(project.graph, path, ticketId);
@@ -511,9 +549,13 @@ export async function runGraph(
   // approving one review never restarts work the user deliberately stopped.
   // This cannot be inferred from `active`: a run parked on a human gate stays
   // active until the gate is answered, which would freeze the skip for good.
-  if (!resume)
+  if (!resume) {
     for (const key of [...registry.userStopped])
       if (key.startsWith(k + "#")) registry.userStopped.delete(key);
+    const p = store.getProject(dir);
+    for (const t of (p && graphAtPath(p.graph, path))?.tickets ?? [])
+      unpark(dir, path, t.id);
+  }
   registry.active.add(k);
   if (registry.loops.has(k)) return; // a scheduler loop is already draining this graph
   registry.loops.add(k);
@@ -653,6 +695,9 @@ function abortRun(dir: string, path: string[], ticketId: string): void {
 export function stopTicket(dir: string, path: string[], ticketId: string): void {
   registry.userStopped.add(ticketScope(dir, path, ticketId));
   abortRun(dir, path, ticketId);
+  // A ticket with no live agent parks now; one still winding down parks in the
+  // write that settles it (see runLeafTicket).
+  park(dir, path, ticketId);
   notifyRuns(dir);
 }
 
@@ -669,6 +714,9 @@ export function stopGraph(dir: string, path: string[], byUser = false): void {
     registry.controllers.get(ticketScope(dir, path, t.id))?.abort();
     if (t.subgraph.tickets.length > 0) stopGraph(dir, [...path, t.id]);
     settleZombie(dir, path, t.id);
+    // Same as stopTicket: the stop has to be visible, or every card this just
+    // took out of the queue keeps saying Queued for good.
+    if (byUser) park(dir, path, t.id);
   }
   notifyRuns(dir);
 }
