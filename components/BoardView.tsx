@@ -317,7 +317,7 @@ interface DepLine {
 export default function BoardView() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
-  const { updateGraph, updateTicket } = useStore.getState();
+  const { updateGraph, updateTicket, setPath } = useStore.getState();
 
   // Card selection is local to the board: it only opens the card's agent
   // conversation. Routing it through the store's selection would also open the
@@ -1150,8 +1150,16 @@ export default function BoardView() {
                     className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500"
                     title="Mark this human-review ticket complete — no issues remaining"
                     // Not a plain status write: a run parked on this human gate
-                    // resumes only through approveTicket.
-                    onClick={() => approveTicket(parentPath, parent.id)}
+                    // resumes only through approveTicket. Nothing is left to do
+                    // here afterwards, so the board closes behind the person —
+                    // the request is already on its way and does not depend on
+                    // this view being mounted (it captures the project and
+                    // flushes the tab's edits itself, and leaving a board
+                    // changes only which graph is on screen).
+                    onClick={() => {
+                      approveTicket(parentPath, parent.id);
+                      setPath(parentPath);
+                    }}
                   >
                     All good
                   </button>
