@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { defaultProject, Project } from "./types";
+import { defaultProject, isTicketDone, Project } from "./types";
 
 /** New projects are created as subfolders of this directory. */
 const BASE = process.env.AUTOJIRA_HOME || path.join(os.homedir(), "Documents", "personal");
@@ -13,6 +13,9 @@ export interface ProjectRow {
   name: string;
   updated_at: string;
   metaPosition?: { x: number; y: number };
+  /** Finished, so the meta-graph can show a project done the way a graph shows
+   * a ticket done. See `row` for what that means. */
+  done: boolean;
 }
 
 const projectFile = (dir: string) => path.join(dir, ".autojira", "project.json");
@@ -51,6 +54,12 @@ function row(dir: string): ProjectRow | null {
     name: p.name,
     updated_at: fs.statSync(projectFile(dir)).mtime.toISOString(),
     metaPosition: p.metaPosition,
+    // A project is just the outermost ticket, so it is finished on exactly the
+    // same terms: every top-level ticket done, with `isTicketDone` answering
+    // for nested subgraphs and for a human gate nobody has signed off yet. A
+    // project with no tickets is not finished — `every` on an empty list would
+    // say otherwise, and "nothing to do" is not "done".
+    done: p.graph.tickets.length > 0 && p.graph.tickets.every(isTicketDone),
   };
 }
 

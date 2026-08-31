@@ -29,7 +29,7 @@ import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
 type ProjectNodeType = Node<
-  { name: string; running: boolean; onDelete: () => void },
+  { name: string; running: boolean; done: boolean; onDelete: () => void },
   "project"
 >;
 
@@ -37,11 +37,21 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
   return (
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pt-1.5 shadow-lg shadow-zinc-900/10 ${
+        // Running before done, as a ticket node orders them: the live state is
+        // what the person needs to see, and a finished project that is running
+        // again has work going on inside it.
         data.running
           ? "border-blue-400"
-          : "border-zinc-300 hover:border-violet-400"
+          : data.done
+            ? "border-emerald-500"
+            : "border-zinc-300 hover:border-violet-400"
       }`}
     >
+      {data.done && (
+        <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">
+          ✓
+        </span>
+      )}
       {/* One row: name, then trash, then run/stop rightmost — a project is
           just the outermost ticket, so it gets a ticket node's control row. */}
       <div className="flex items-center gap-1.5">
@@ -291,6 +301,7 @@ export default function ProjectPicker() {
     const rows: {
       id: string;
       name: string;
+      done: boolean;
       metaPosition?: { x: number; y: number };
     }[] = (await res.json()).projects;
     setNodes(
@@ -301,6 +312,7 @@ export default function ProjectPicker() {
         data: {
           name: r.name,
           running: isProjectRunning(r.id),
+          done: r.done,
           onDelete: () => setPendingDelete({ id: r.id, name: r.name }),
         },
       }))
