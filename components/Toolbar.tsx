@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { autoLayout } from "@/lib/layout";
-import { isGraphRunning, runGraph, stopGraph } from "@/lib/runner";
+import { isGraphRunning, runGraph, stopGraph, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
 import ArrowLeftIcon from "./ArrowLeftIcon";
@@ -25,13 +25,15 @@ export default function Toolbar() {
   const updateTicket = useStore((s) => s.updateTicket);
 
   const [showPopulate, setShowPopulate] = useState(false);
-  const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    const iv = setInterval(() => setRunning(isGraphRunning(path)), 500);
-    return () => clearInterval(iv);
-  }, [path]);
+  // Pushed by the runner the moment a level starts or settles — a poll would
+  // both lag and keep saying "running" for a run parked on a human gate.
+  const running = useSyncExternalStore(
+    subscribeRuns,
+    () => isGraphRunning(path),
+    () => false
+  );
 
   const graph = graphAtPath(project.graph, path);
 

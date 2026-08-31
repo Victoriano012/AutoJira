@@ -14,8 +14,14 @@ import {
 } from "./types";
 
 const controllers = new Map<string, AbortController>();
-const activeGraphRuns = new Set<string>(); // graph paths currently auto-running
-const loopRunning = new Set<string>(); // prevents duplicate scheduler loops
+// Graph paths whose run wants to continue: either draining now, or parked on a
+// human gate so approving resumes it. Not the same as "executing" — see
+// isGraphRunning.
+const activeGraphRuns = new Set<string>();
+const loopRunning = new Set<string>(); // scheduler loops actually draining work
+// Watchers of the run state (the toolbar). A level settles the moment its loop
+// unwinds, so this is pushed, not polled.
+const runListeners = new Set<() => void>();
 // Tickets the user stopped: an active parent scheduler must not immediately
 // restart them (their aborted work settles back to todo, which would
 // otherwise look runnable again). Cleared by running the ticket again or by
@@ -24,6 +30,18 @@ const userStopped = new Set<string>();
 
 const pathKey = (path: string[]) => path.join("/") || "(root)";
 const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
+
+/** Subscribe to run-state changes; returns the unsubscribe. */
+export function subscribeRuns(fn: () => void): () => void {
+  runListeners.add(fn);
+  return () => {
+    runListeners.delete(fn);
+  };
+}
+
+function notifyRuns(): void {
+  for (const fn of [...runListeners]) fn();
+}
 
 /** All context files that apply to a ticket: project + ancestors + its own. */
 function inheritedAttachments(path: string[], ticket: Ticket): Attachment[] {
@@ -310,6 +328,7 @@ export async function runGraph(path: string[]): Promise<void> {
   activeGraphRuns.add(k);
   if (loopRunning.has(k)) return; // a scheduler loop is already draining this graph
   loopRunning.add(k);
+  notifyRuns();
 
   const inFlight = new Map<string, Promise<void>>(); // ticket ids currently running
 
@@ -347,9 +366,11 @@ export async function runGraph(path: string[]): Promise<void> {
       await Promise.race(inFlight.values());
     }
   } finally {
+    // The loop only ever waits on work in flight, so leaving it means this
+    // level has settled: nothing beneath it is executing any more.
     loopRunning.delete(k);
     const g = graphAtPath(useStore.getState().project.graph, path);
-    // Keep the run flag only while reviews are pending (at any depth), so
+    // Keep the resume flag only while reviews are pending (at any depth), so
     // approval resumes the run.
     const anyReview = (g2: { tickets: Ticket[] }): boolean =>
       g2.tickets.some((t) => t.status === "review" || anyReview(t.subgraph));
@@ -368,6 +389,7 @@ export async function runGraph(path: string[]): Promise<void> {
         }));
       if (activeGraphRuns.has(pathKey(parentPath))) void runGraph(parentPath);
     }
+    notifyRuns();
   }
 }
 
@@ -433,6 +455,12 @@ export function stopGraph(path: string[]): void {
   }
 }
 
+/** True while this graph's run is actually executing: its scheduler loop is
+ * draining work, which includes everything nested beneath it (a subgraph run
+ * keeps this level's loop awaiting). A run parked on a human gate is *not*
+ * running — every level from the gate up unwinds its loop, so each settles as
+ * soon as nothing under it is executing. Approving still resumes the run:
+ * activeGraphRuns, not this, remembers that a run wants to continue. */
 export function isGraphRunning(path: string[]): boolean {
-  return activeGraphRuns.has(pathKey(path));
+  return loopRunning.has(pathKey(path));
 }
