@@ -256,9 +256,12 @@ const normFile = (f: string) => f.trim().replace(/^\.?\//, "");
  * second ticket waits — computed from the files each ticket declares, never
  * stored as a dependency, so the graph draws no edge for it.
  *
- * A ticket holds its files only while it is still going to work on them: once
- * it reaches review the agent has stopped, so the next ticket takes the file
- * without waiting for the person to approve anything. (Sending a ticket in
+ * A ticket holds its files only while it is still going to work on them — the
+ * Working column, exactly (`boardColumn`), so a card the person sees waiting
+ * anywhere else is holding nothing. Once it reaches review the agent has
+ * stopped, so the next ticket takes the file without waiting for the person to
+ * approve anything, and a card blocked by a dependency or by another card's
+ * file is not in its own files either. (Sending a ticket in
  * review back with feedback makes it claim its files again, and it then waits
  * its turn like anything else — see `sendFeedback`.) Order settles who goes
  * first — earlier in the graph wins — except that a ticket already running
@@ -273,25 +276,48 @@ export interface FileClaim {
   by: Ticket;
 }
 
+/** Where a card sits on its board. The board renders these four columns and
+ * `fileClaims` asks the same question to decide who is holding a file, so the
+ * two can never disagree: a card holds its files exactly while the person can
+ * see it in Working. */
+export type BoardColumn = "blocked" | "working" | "review" | "done";
+
+export function boardColumn(g: TicketGraph, t: Ticket): BoardColumn {
+  if (isTicketDone(t)) return "done";
+  if (t.status === "review") return "review";
+  // Paused is the person's own block: the card leaves Working the moment they
+  // press it, without waiting for the agent to wind down.
+  if (t.paused) return "blocked";
+  if (t.status === "running" || t.status === "error") return "working";
+  // todo: dispatchable, unless a dependency or another card's file says no.
+  if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return "blocked";
+  return fileBlockedBy(g, t.id) ? "blocked" : "working";
+}
+
 export function fileClaims(g: TicketGraph, ticketId: string): FileClaim[] {
   const i = g.tickets.findIndex((t) => t.id === ticketId);
   if (i < 0) return [];
   const me = g.tickets[i];
-  // A ticket that has stopped working wants nothing: it is not waiting, and
-  // nobody is waiting on its behalf.
-  if (isTicketDone(me) || me.status === "review") return [];
+  // A finished ticket wants nothing. A ticket in review still does: this is the
+  // question `sendFeedback` asks before putting its agent back to work, so it
+  // must answer for the ticket that is about to run, not the one sitting still.
+  if (isTicketDone(me)) return [];
   const mine = new Set((me.files ?? []).map(normFile));
   if (mine.size === 0) return [];
   const out: FileClaim[] = [];
   for (let j = 0; j < g.tickets.length; j++) {
     const o = g.tickets[j];
-    if (j === i || isTicketDone(o) || o.status === "review") continue;
-    if (!o.files?.length) continue;
+    if (j === i || !o.files?.length) continue;
     if (j > i && o.status !== "running") continue;
     // One claim per ticket, not per file: three shared files are still one
     // reason to wait. Sorted so both cards name the same one.
     const files = [...new Set(o.files.map(normFile))].filter((f) => mine.has(f)).sort();
-    if (files.length) out.push({ file: files[0], files, by: o });
+    // Only a card in Working holds anything. Asked last, and only of a card
+    // that shares a file: the answer can recurse (into strictly earlier
+    // tickets, so it always settles), and this way it rarely has to.
+    if (files.length && boardColumn(g, o) === "working") {
+      out.push({ file: files[0], files, by: o });
+    }
   }
   return out;
 }
@@ -313,7 +339,9 @@ export function fileBlockees(
 ): { file: string; files: string[]; who: Ticket }[] {
   const out: { file: string; files: string[]; who: Ticket }[] = [];
   for (const o of g.tickets) {
-    if (o.id === ticketId) continue;
+    // Only a card that is actually stuck is waiting: a card in review would
+    // wait if it went back to work, but nobody is held up on its behalf now.
+    if (o.id === ticketId || boardColumn(g, o) !== "blocked") continue;
     for (const claim of fileClaims(g, o.id)) {
       if (claim.by.id === ticketId) {
         out.push({ file: claim.file, files: claim.files, who: o });

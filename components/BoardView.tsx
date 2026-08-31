@@ -13,6 +13,8 @@ import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
 import { HandIcon, Spinner, StopSquare } from "./icons";
 import {
+  BoardColumn,
+  boardColumn,
   contextChain,
   dependenciesOf,
   GraphEdge,
@@ -26,7 +28,7 @@ import {
   ticketAtPath,
 } from "@/lib/types";
 
-type ColumnId = "blocked" | "working" | "review" | "done";
+type ColumnId = BoardColumn;
 
 const COLUMNS: {
   id: ColumnId;
@@ -59,19 +61,6 @@ const COLUMNS: {
     header: "text-emerald-700",
   },
 ];
-
-function columnOf(t: Ticket, ready: boolean, fileBlocked: boolean): ColumnId {
-  if (isTicketDone(t)) return "done";
-  if (t.status === "review") return "review";
-  // Paused is the person's own block: the card moves out of Working the moment
-  // they press it, without waiting for the agent to wind down.
-  if (t.paused) return "blocked";
-  if (t.status === "running" || t.status === "error") return "working";
-  // Another card is going to edit a file this one names: the scheduler will not
-  // dispatch it, so Working would be a lie.
-  if (fileBlocked) return "blocked";
-  return ready ? "working" : "blocked"; // todo
-}
 
 interface GeneratedTicket {
   title: string;
@@ -505,7 +494,7 @@ export default function BoardView() {
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
-    byColumn.get(columnOf(t, isReady(t), claimsOf(t).length > 0))!.push(t);
+    byColumn.get(boardColumn(graph, t))!.push(t);
   }
   const doneKey = byColumn
     .get("done")!
