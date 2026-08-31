@@ -108,6 +108,13 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
     return () => clearTimeout(t);
   }, [waiting, swept]);
 
+  // Human tickets show a count instead of a thumbnail: how many direct
+  // sub-tickets sit in the board's "Ready for review" column (same predicate
+  // as columnOf() in BoardView).
+  const readyForReview = ticket.subgraph.tickets.filter(
+    (t) => !isTicketDone(t) && t.status === "review",
+  ).length;
+
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
   function run() {
@@ -181,8 +188,19 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             </span>
           )}
         </div>
-        {ticket.subgraph.tickets.length > 0 && (
-          <SubgraphPreview graph={ticket.subgraph} />
+        {ticket.type === "human_review" ? (
+          readyForReview > 0 && (
+            <span
+              className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-medium text-yellow-700"
+              title={`${readyForReview} sub-ticket${readyForReview === 1 ? "" : "s"} ready for your review`}
+            >
+              {readyForReview} to review
+            </span>
+          )
+        ) : (
+          ticket.subgraph.tickets.length > 0 && (
+            <SubgraphPreview graph={ticket.subgraph} />
+          )
         )}
         {running ? (
           <span className="flex items-center gap-1.5">
