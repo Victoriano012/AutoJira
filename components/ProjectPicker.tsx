@@ -10,6 +10,11 @@ import {
 } from "@/lib/sync";
 import { zoomIntoProject } from "@/lib/view-zoom";
 import {
+  META_GRAPH_KEY,
+  rememberedViewport,
+  rememberViewport,
+} from "@/lib/viewport-memory";
+import {
   applyNodeChanges,
   Background,
   BackgroundVariant,
@@ -300,6 +305,12 @@ export default function ProjectPicker() {
     null
   );
 
+  // Where the meta-graph was left, for as long as the page is open: opening a
+  // project unmounts this whole view, and coming back should land where it was
+  // (see `lib/viewport-memory.ts`). Read at mount only, since `onMoveEnd` keeps
+  // rewriting it while the graph is up.
+  const [start] = useState(() => rememberedViewport(META_GRAPH_KEY));
+
   const refresh = useCallback(async () => {
     const res = await fetch("/api/projects");
     if (!res.ok) return;
@@ -378,12 +389,14 @@ export default function ProjectPicker() {
             nodes={nodes}
             nodeTypes={nodeTypes}
             colorMode="light"
-            fitView
+            fitView={!start}
             fitViewOptions={{ maxZoom: 1 }}
+            defaultViewport={start}
             proOptions={{ hideAttribution: true }}
             nodesConnectable={false}
             deleteKeyCode={null}
             zoomOnDoubleClick={false}
+            onMoveEnd={(_, viewport) => rememberViewport(META_GRAPH_KEY, viewport)}
             onNodesChange={onNodesChange}
             onNodeDragStop={(_, node) => void saveMetaPosition(node.id, node.position)}
             // A project is the outermost ticket, so opening one moves like

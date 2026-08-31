@@ -2,6 +2,7 @@
 
 import { layoutGraph, NODE_WIDTH } from "@/lib/layout";
 import { useStore } from "@/lib/store";
+import { rememberedViewport, rememberViewport } from "@/lib/viewport-memory";
 import {
   dependenciesOf,
   graphAtPath,
@@ -208,23 +209,37 @@ export function GraphCanvas() {
     [graph, path, addEdge]
   );
 
+  // Identity of the graph on screen: what the canvas remounts on, and what its
+  // remembered pan/zoom is filed under. Read once per graph — every move writes
+  // this key back, so a later read would be the position being left rather than
+  // the one to come back to.
+  const graphKey = `${projectId}:${path.join("/")}`;
+  const start = useMemo(() => rememberedViewport(graphKey), [graphKey]);
+
   return (
     <div ref={wrapperRef} className="relative h-full w-full overscroll-x-none">
       <ReactFlow
         // Remount when the viewed graph changes (project switch, subgraph
         // navigation) so the mount-time fitView recenters on it.
-        key={`${projectId}:${path.join("/")}`}
+        key={graphKey}
         nodes={nodes}
         edges={styledEdges}
         nodeTypes={nodeTypes}
         colorMode="light"
-        fitView
+        // A graph already visited this page-lifetime opens where it was left
+        // (see `lib/viewport-memory.ts`), and only a first visit fits.
+        // `defaultViewport` rather than a setViewport once mounted: it is the
+        // transform the first paint gets, and a queued fitView would in any
+        // case run after the nodes are measured — after any effect of ours.
+        fitView={!start}
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        defaultViewport={start}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={["Backspace", "Delete"]}
         onConnect={onConnect}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onMoveEnd={(_, viewport) => rememberViewport(graphKey, viewport)}
         onNodeDragStop={(_, node) =>
           updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
         }

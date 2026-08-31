@@ -25,15 +25,9 @@
 
 type Dir = "in" | "out";
 type Rect = { left: number; top: number; width: number; height: number };
-type Card = {
-  rect: Rect;
-  color: string;
-  /** True if the details panel was open when this was measured, so the graph
-   * behind will re-fit wider on the way back and the rect is only a guess. */
-  narrow: boolean;
-};
+type Card = { rect: Rect; color: string };
 
-/** Going in: grow, then hold (the new view mounts and fits behind an opaque
+/** Going in: grow, then hold (the new view mounts and settles behind an opaque
  * box), then fade the box off it. Going out there is nothing to hide, so no
  * hold, and it can be a touch quicker — you already know where you are going. */
 const GROW_IN_MS = 330;
@@ -182,7 +176,7 @@ function colorOfClass(cls: string): string {
 /** A node's card: where it is, and the status colour of its border — the one it
  * has unselected and unhovered, which the card publishes as `data-zoom-border`,
  * since you both select and hover the node you click on your way in here. */
-function cardOf(id: string, narrow = false): Card | null {
+function cardOf(id: string): Card | null {
   const node = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
   const el = (node?.firstElementChild ?? node) as HTMLElement | null;
   if (!el) return null;
@@ -192,7 +186,6 @@ function cardOf(id: string, narrow = false): Card | null {
   return {
     rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     color: (cls && colorOfClass(cls)) || getComputedStyle(el).borderTopColor || NEUTRAL,
-    narrow,
   };
 }
 
@@ -232,7 +225,7 @@ function fly(o: Flight): Promise<void> {
 
   let card: Card | null;
   if (o.dir === "in") {
-    card = o.cardId ? cardOf(o.cardId, o.panelClosing) : null;
+    card = o.cardId ? cardOf(o.cardId) : null;
     if (card) S.cards.set(o.key, card);
   } else {
     // The card belongs to a view that has not mounted yet, so the only rect
@@ -243,7 +236,6 @@ function fly(o: Flight): Promise<void> {
   const small: Card =
     card ?? {
       color: NEUTRAL,
-      narrow: false,
       rect: {
         left: frame.left + Math.max(0, frame.width - CARD_W) / 2,
         top: frame.top + Math.max(0, frame.height - CARD_H) / 2,
@@ -280,7 +272,7 @@ function fly(o: Flight): Promise<void> {
       box.style.transition = move(GROW_IN_MS, "ease-out");
       place(box, frame, FRAME_RADIUS);
       // The box now covers the frame: swap the view under it, give it a beat to
-      // mount and fit, then fade the box off it.
+      // mount and settle, then fade the box off it.
       S.timers.push(
         window.setTimeout(() => {
           const owed = S.commit;
@@ -315,14 +307,17 @@ function fly(o: Flight): Promise<void> {
     S.timers.push(window.setTimeout(stop, GROW_OUT_MS + 40));
   };
   // The rect recorded on the way in is where the card will be again: the graph
-  // behind re-mounts and re-fits into the same box, so start collapsing at once.
-  // Unless it was recorded with the details panel open — that box was ~400px
-  // narrower, so the graph fits differently and the card has to be found again
-  // once the destination canvas has mounted and settled.
-  if (card && !card.narrow) {
+  // behind re-mounts at the exact pan and zoom it was left at (see
+  // `lib/viewport-memory.ts`), so start collapsing at once. That holds even for
+  // a rect measured with the details panel open — the panel takes its width off
+  // the canvas' right edge, and the pan it caused is part of what is restored,
+  // so the node lands back on the same screen pixels in the wider canvas.
+  if (card) {
     collapseTo(card);
     return Promise.resolve();
   }
+  // Without a rect — a reload, then Back — there is nothing to aim at until the
+  // destination canvas has mounted and its nodes are where they will be.
   let tries = 0;
   let seen = "";
   const settle = () => {
