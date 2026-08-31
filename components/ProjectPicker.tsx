@@ -24,6 +24,7 @@ import { memo, useCallback, useEffect, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
 import GearIcon from "./GearIcon";
 import { StopSquare } from "./icons";
+import Logo from "./Logo";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 
@@ -338,6 +339,7 @@ export default function ProjectPicker() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <header className="h-16 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
+        <Logo size={26} className="shrink-0 text-zinc-900" />
         <span className="text-2xl font-semibold">Projects</span>
         <button
           className="ml-auto rounded-lg px-4 py-1.5 text-base leading-tight bg-violet-600 hover:bg-violet-500 text-white"

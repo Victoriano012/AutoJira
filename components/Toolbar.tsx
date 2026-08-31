@@ -16,6 +16,7 @@ import ArrowLeftIcon from "./ArrowLeftIcon";
 import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
 import { LayoutIcon, PlayIcon, PlusIcon, Spinner, StopIcon } from "./icons";
+import Logo from "./Logo";
 import PopulateModal from "./PopulateModal";
 import { ackKey, ackTickets, useRunAck } from "./useRunAck";
 import SettingsModal from "./SettingsModal";
@@ -101,6 +102,7 @@ export default function Toolbar() {
 
   return (
     <header className="h-16 shrink-0 flex items-center gap-3 px-4 bg-white border-b border-zinc-200">
+      <Logo size={20} className="shrink-0 text-zinc-900" />
       <button
         className="shrink-0 text-zinc-500 hover:text-zinc-900"
         onClick={closeProject}
