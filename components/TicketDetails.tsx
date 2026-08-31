@@ -13,6 +13,7 @@ import {
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
 import { PlayIcon, StopIcon } from "./icons";
+import { useRunAck } from "./useRunAck";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -36,6 +37,9 @@ export function TicketDetailsHeader({
 }) {
   const updateTicket = useStore((s) => s.updateTicket);
   const runLabel = ticket.subgraph.tickets.length > 0 ? "Run subgraph" : "Run";
+  // Brief acknowledgement of a run click, for tickets that settle back to
+  // waiting immediately and would otherwise look unresponsive.
+  const [acking, ack] = useRunAck();
 
   return (
     <>
@@ -49,7 +53,7 @@ export function TicketDetailsHeader({
       />
       {/* Stop belongs to the running state only: a parent still marked
           "running" with nothing working inside is waiting, so it gets play. */}
-      {isTicketRunning(ticket) ? (
+      {isTicketRunning(ticket) || acking ? (
         <button
           className="shrink-0 text-red-600 hover:text-red-500"
           title="Stop"
@@ -61,7 +65,10 @@ export function TicketDetailsHeader({
         <button
           className="shrink-0 text-emerald-600 hover:text-emerald-500"
           title={runLabel}
-          onClick={() => void runTicket(path, ticket.id)}
+          onClick={() => {
+            ack();
+            void runTicket(path, ticket.id);
+          }}
         >
           <PlayIcon size={16} />
         </button>
