@@ -13,7 +13,6 @@ import {
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { Spinner } from "./icons";
-import { useRunAck } from "./useRunAck";
 import { memo, useMemo } from "react";
 
 export type TicketNodeType = Node<
@@ -85,16 +84,12 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   // The two states are derived, not read off the raw status: a ticket with a
   // subgraph stays "running" while its scheduler drives it, even once every
   // agent inside has stopped and only the human can move things on.
-  // …plus a short window after a run click, so pressing play on a ticket that
-  // settles straight to Waiting still shows something happened.
-  const [acking, ack] = useRunAck();
-  const running = isTicketRunning(ticket) || acking;
+  const running = isTicketRunning(ticket);
   const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
   function run() {
-    ack();
     if (ticket.type === "human_review") {
       useStore.getState().setPath([...path, ticket.id]);
       if (ticket.subgraph.tickets.length === 0) return; // empty board: just open it

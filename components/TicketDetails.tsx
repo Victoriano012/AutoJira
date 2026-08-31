@@ -13,7 +13,6 @@ import {
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
 import { PlayIcon, StopIcon } from "./icons";
-import { useRunAck } from "./useRunAck";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -48,9 +47,6 @@ export function TicketDetailsHeader({
     : hasSubgraph
       ? "Run subgraph"
       : "Run";
-  // Brief acknowledgement of a run click, for tickets that settle back to
-  // waiting immediately and would otherwise look unresponsive.
-  const [acking, ack] = useRunAck();
 
   return (
     <>
@@ -64,7 +60,7 @@ export function TicketDetailsHeader({
       />
       {/* Stop belongs to the running state only: a parent still marked
           "running" with nothing working inside is waiting, so it gets play. */}
-      {isTicketRunning(ticket) || acking ? (
+      {isTicketRunning(ticket) ? (
         <button
           className="shrink-0 text-red-600 hover:text-red-500"
           title="Stop"
@@ -77,7 +73,6 @@ export function TicketDetailsHeader({
           className="shrink-0 text-emerald-600 hover:text-emerald-500"
           title={runLabel}
           onClick={() => {
-            ack();
             if (isHuman) {
               setPath([...path, ticket.id]);
               if (!hasSubgraph) return; // empty board: just open it
