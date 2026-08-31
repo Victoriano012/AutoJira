@@ -77,8 +77,8 @@ interface PendingRequest {
   error?: string;
 }
 
-/** 2 lines of text-xs (16px line-height) + py-1 (8px) + 2px border. */
-const REJECT_MAX_HEIGHT = 42;
+/** 10 lines of text-xs (16px line-height) + py-1 (8px) + 2px border. */
+const REJECT_MAX_HEIGHT = 170;
 
 /** Sent to the agent when a card is rejected with nothing typed. */
 const DEFAULT_REJECTION =
@@ -179,7 +179,7 @@ export default function BoardView() {
     }
   }
 
-  // ---- bottom-bar change requests (one Claude conversation per board) ----
+  // ---- bottom-bar change requests (one agent conversation per board) ----
   // Sent, not answered yet. Stored like the draft, and for the same reason: a
   // remount must not swallow a request somebody is waiting on — silently
   // dropping it is what "it was processing and then it just disappeared" is.
@@ -259,12 +259,12 @@ export default function BoardView() {
             status: t.status,
             files: t.files ?? [],
           })),
-          chain: parent.boardSessionId
-            ? undefined
-            : contextChain(st.project, path).map(({ title, description }) => ({
-                title,
-                description,
-              })),
+          // Always include this so a provider switch can start a fresh planner
+          // session with the same board context.
+          chain: contextChain(st.project, path).map(({ title, description }) => ({
+            title,
+            description,
+          })),
         }),
       });
       const data = (await res.json()) as {
@@ -388,7 +388,7 @@ export default function BoardView() {
     return () => clearTimeout(timer);
   }, [pending, graph]);
 
-  // Grows with the text up to two lines, then scrolls — same as ChatInput.
+  // Grows with the text up to ten lines, then scrolls — same as ChatInput.
   // Reopening on another ticket re-runs it, so a restored multi-line draft
   // comes back at the height it had.
   useEffect(() => {
@@ -858,7 +858,7 @@ export default function BoardView() {
                     {col.id === "review" && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                         {rejectingId === t.id ? (
-                          <div ref={rejectBoxRef} className="flex items-center gap-1.5">
+                          <div ref={rejectBoxRef} className="flex items-end gap-1.5">
                             <textarea
                               autoFocus
                               ref={rejectInputRef}
