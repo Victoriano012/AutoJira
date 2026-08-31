@@ -58,6 +58,17 @@ export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
+/** Feather "arrow-right": the mirror of ArrowLeftIcon, so descending into a
+ * ticket's board reads as the opposite of the breadcrumb's step back. */
+export function ArrowRightIcon({ size }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </Svg>
+  );
+}
+
 export function StopIcon({ size }: { size?: number }) {
   return (
     <Svg size={size}>

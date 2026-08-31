@@ -12,7 +12,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
-import { Spinner } from "./icons";
+import { ArrowRightIcon, Spinner } from "./icons";
 import { ackKey, useTicketAck } from "./useRunAck";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
@@ -201,6 +201,21 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
         {running ? (
           <span className="flex items-center gap-1.5">
+            {/* Running hides play, but a human ticket's board is reached
+                through this node alone — so keep a way in. Navigation only,
+                hence an arrow rather than the ▶ that means "run". */}
+            {ticket.type === "human_review" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useStore.getState().setPath([...path, ticket.id]);
+                }}
+                title="Open the human-interaction window"
+                className="text-zinc-400 hover:text-zinc-600"
+              >
+                <ArrowRightIcon size={14} />
+              </button>
+            )}
             {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
             <button
               onClick={(e) => {

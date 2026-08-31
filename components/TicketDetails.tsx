@@ -12,7 +12,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
-import { PlayIcon, StopIcon } from "./icons";
+import { ArrowRightIcon, PlayIcon, StopIcon } from "./icons";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -61,13 +61,26 @@ export function TicketDetailsHeader({
       {/* Stop belongs to the running state only: a parent still marked
           "running" with nothing working inside is waiting, so it gets play. */}
       {isTicketRunning(ticket) ? (
-        <button
-          className="shrink-0 text-red-600 hover:text-red-500"
-          title="Stop"
-          onClick={() => stopTicket(path, ticket.id)}
-        >
-          <StopIcon size={16} />
-        </button>
+        <>
+          {/* Play is gone while running, so a human ticket would lose its only
+              way into the board: offer the navigation on its own. */}
+          {isHuman && (
+            <button
+              className="shrink-0 text-zinc-400 hover:text-zinc-600"
+              title="Open the human-interaction window"
+              onClick={() => setPath([...path, ticket.id])}
+            >
+              <ArrowRightIcon size={16} />
+            </button>
+          )}
+          <button
+            className="shrink-0 text-red-600 hover:text-red-500"
+            title="Stop"
+            onClick={() => stopTicket(path, ticket.id)}
+          >
+            <StopIcon size={16} />
+          </button>
+        </>
       ) : (
         <button
           className="shrink-0 text-emerald-600 hover:text-emerald-500"
