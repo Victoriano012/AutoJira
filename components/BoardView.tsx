@@ -373,7 +373,10 @@ export default function BoardView() {
   const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
 
   return (
-    <div className="flex h-full w-full flex-col">
+    // Cards stop this click, so anything else — column background, headers,
+    // the footer button, the request bar — lands here and clears the selection
+    // while still doing whatever it does itself.
+    <div className="flex h-full w-full flex-col" onClick={() => setSelectedId(null)}>
       {/* columns */}
       <div
         ref={boardRef}
@@ -403,7 +406,10 @@ export default function BoardView() {
                 // inside it is what the FLIP animation moves.
                 <div key={t.id} ref={cardRef(t.id)}>
                   <div
-                    onClick={() => setSelectedId((id) => (id === t.id ? null : t.id))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId((id) => (id === t.id ? null : t.id));
+                    }}
                     className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
                       t.id === selectedId
                         ? "border-violet-500"
@@ -418,7 +424,12 @@ export default function BoardView() {
                     {/* Description only on the pressed card — capped at ~6 lines
                      * (text-xs line-height is 1rem), the rest scrolls. */}
                     {t.id === selectedId && t.description && (
-                      <div className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500">
+                      <div
+                        // Reading and scrolling it is not a press on the card:
+                        // dragging its scrollbar must not collapse it.
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500"
+                      >
                         {t.description}
                       </div>
                     )}
