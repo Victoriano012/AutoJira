@@ -185,18 +185,26 @@ export function dependentsOf(graph: TicketGraph, ticketId: string): Ticket[] {
 }
 
 /** A ticket is effectively done when its own status is done AND, if it has a
- * subgraph, every ticket inside is done too. */
+ * subgraph, every ticket inside is done too — except a human ticket, which is
+ * only ever finished by its person ("All good" on the board, "Mark done" in the
+ * panel). Every card on its board being Done means there is nothing left to
+ * review, not that the review happened. */
 export function isTicketDone(t: Ticket): boolean {
+  if (t.type === "human_review") return t.status === "done";
   if (t.subgraph.tickets.length > 0) return t.subgraph.tickets.every(isTicketDone);
   return t.status === "done";
 }
 
 /** Whether dependents of this ticket may start. Done always satisfies; a
- * non-blocking human-review ticket satisfies as soon as the AI work is
- * finished (status "review"), before the human approves. */
+ * non-blocking human-review ticket satisfies as soon as the AI work under it is
+ * finished — a leaf when it reaches "review", a board when every card is done —
+ * without waiting for the human's approval. */
 export function satisfiesDependents(t: Ticket): boolean {
   if (isTicketDone(t)) return true;
-  return t.type === "human_review" && t.blocking === false && t.status === "review";
+  if (t.type !== "human_review" || t.blocking !== false) return false;
+  return t.subgraph.tickets.length > 0
+    ? t.subgraph.tickets.every(isTicketDone)
+    : t.status === "review";
 }
 
 /** An agent is genuinely at work at or beneath this ticket. A ticket with a
@@ -217,8 +225,9 @@ export function isTicketRunning(t: Ticket): boolean {
  *   review); a chat the human starts on it runs a real agent, so it is Running
  *   then, and stale "running" never survives a load (see settleZombies).
  * - A human ticket with a board is Running only while some card is genuinely
- *   running in the Working column; otherwise, with not everything Done, it is
- *   Waiting for the human to complete it.
+ *   running in the Working column; otherwise it is Waiting for the human to
+ *   complete it — a board with every card Done included, since only "All good"
+ *   ends the review.
  * - Any other ticket is Waiting only when something inside it is itself
  *   Waiting; subtickets merely blocked on dependencies do not count. */
 export function isTicketWaiting(t: Ticket, depsSatisfied: boolean): boolean {

@@ -351,9 +351,11 @@ export async function runTicket(
   if (ticket.subgraph.tickets.length > 0) {
     store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
     await runGraph(dir, [...path, ticketId]);
+    // isTicketDone, not "every child done": a human ticket keeps its own
+    // sign-off, so a drained board leaves it waiting on its person.
     store.updateTicket(dir, path, ticketId, (t) => ({
       ...t,
-      status: t.subgraph.tickets.every(isTicketDone) ? "done" : "todo",
+      status: isTicketDone(t) ? "done" : "todo",
     }));
   } else if (ticket.type === "human_review" && !isBoard(dir, path)) {
     // A human ticket with no board has nothing for an agent to do: it is a
@@ -435,21 +437,28 @@ export async function runGraph(
     registry.loops.delete(k);
     const project = store.getProject(dir);
     const g = project && graphAtPath(project.graph, path);
-    // Keep the resume flag only while reviews are pending (at any depth), so
-    // approval resumes the run.
-    const anyReview = (g2: { tickets: Ticket[] }): boolean =>
-      g2.tickets.some((t) => t.status === "review" || anyReview(t.subgraph));
-    if (!g || !anyReview(g)) registry.active.delete(k);
+    // Keep the resume flag only while a human still owes an answer (at any
+    // depth) — a ticket in review, or a human ticket nobody has signed off yet
+    // — so their approval resumes the run. A human ticket whose board is fully
+    // Done is still one of those: only "All good" finishes it.
+    const anyGate = (g2: { tickets: Ticket[] }): boolean =>
+      g2.tickets.some(
+        (t) =>
+          t.status === "review" ||
+          (t.type === "human_review" && !isTicketDone(t)) ||
+          anyGate(t.subgraph)
+      );
+    if (!g || !anyGate(g)) registry.active.delete(k);
 
     // If this subgraph just fully completed, mark its parent ticket done and
-    // let a paused parent run continue past it.
+    // let a paused parent run continue past it. A human parent is the
+    // exception: its board draining is what it waits on its person for.
     const allDone = !!g && g.tickets.length > 0 && g.tickets.every(isTicketDone);
     if (allDone && path.length > 0) {
       const parentPath = path.slice(0, -1);
-      store.updateTicket(dir, parentPath, path[path.length - 1], (t) => ({
-        ...t,
-        status: "done",
-      }));
+      store.updateTicket(dir, parentPath, path[path.length - 1], (t) =>
+        t.type === "human_review" ? t : { ...t, status: "done" }
+      );
       if (registry.active.has(graphScope(dir, parentPath)))
         void runGraph(dir, parentPath, true);
     }
