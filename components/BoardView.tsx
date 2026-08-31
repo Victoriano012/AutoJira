@@ -629,6 +629,18 @@ export default function BoardView() {
     void runTicket(path, ticketId);
   }
 
+  // The board's own ticket — the human-review ticket this window belongs to.
+  const parentPath = path.slice(0, -1);
+  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
+
+  /** Put this panel back in play — the footer's Reopen, and what a message
+   * does on its own: saying something here means there is work left, so a
+   * panel the person had closed cannot stay closed. */
+  function reopenPanel() {
+    if (parent?.status !== "done") return; // already open: nothing to write
+    updateTicket(parentPath, parent.id, (t) => ({ ...t, status: "todo" }));
+  }
+
   /**
    * An extra indication for a card that has not reached review: it goes into
    * the ticket (so the card's next run reads it, and it survives a reload) and
@@ -638,6 +650,7 @@ export default function BoardView() {
   function submitNote(t: Ticket) {
     const msg = (noteDrafts[t.id] ?? "").trim();
     if (!msg) return; // nothing typed: no default here, unlike a rejection
+    reopenPanel();
     closeBox();
     setNoteDrafts((d) => ({ ...d, [t.id]: "" }));
     updateTicket(path, t.id, (x) => ({
@@ -674,6 +687,7 @@ export default function BoardView() {
 
   function submitReject(t: Ticket) {
     const msg = (rejectDrafts[t.id] ?? "").trim() || DEFAULT_REJECTION;
+    reopenPanel();
     closeBox();
     setRejectDrafts((d) => ({ ...d, [t.id]: "" }));
     // Back to its agent: Working, or Blocked if another card holds its file.
@@ -917,10 +931,6 @@ export default function BoardView() {
       <NoteIcon />
     </button>
   );
-
-  // The board's own ticket — the human-review ticket this window belongs to.
-  const parentPath = path.slice(0, -1);
-  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
 
   return (
     // Cards stop this click, so anything else — column background, headers,
@@ -1199,12 +1209,7 @@ export default function BoardView() {
                   <button
                     className="w-full cursor-pointer rounded-full border border-zinc-300 bg-white px-1 py-px text-lg font-bold leading-tight text-zinc-600 shadow-sm transition-colors hover:border-violet-400 hover:text-violet-600"
                     title="Reopen this human-review ticket"
-                    onClick={() =>
-                      updateTicket(parentPath, parent.id, (t) => ({
-                        ...t,
-                        status: "todo",
-                      }))
-                    }
+                    onClick={reopenPanel}
                   >
                     Reopen
                   </button>
