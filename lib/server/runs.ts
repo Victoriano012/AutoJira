@@ -31,6 +31,8 @@ interface Registry {
   loops: Set<string>;
   /** Tickets the user stopped; a parent scheduler must not restart them. */
   userStopped: Set<string>;
+  /** Human messages waiting for a ticket's files to come free, by ticket key. */
+  pendingFeedback: Map<string, string>;
 }
 
 const globals = globalThis as unknown as { __autojiraRegistry?: Registry };
@@ -39,7 +41,10 @@ const registry: Registry = (globals.__autojiraRegistry ??= {
   active: new Set(),
   loops: new Set(),
   userStopped: new Set(),
+  pendingFeedback: new Map(),
 });
+// A dev-server hot reload keeps the old registry object, which predates this map.
+registry.pendingFeedback ??= new Map();
 
 const pathKey = (path: string[]) => path.join("/") || "(root)";
 const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
@@ -262,6 +267,25 @@ export async function sendFeedback(
   const ticket = ticketAtPath(project.graph, path, ticketId);
   if (!ticket) return;
 
+  // Answering a ticket puts its agent back to work, which re-claims its files —
+  // and another ticket may have taken one of them while it sat in review. The
+  // message waits with the ticket rather than starting a second agent in that
+  // file; the scheduler delivers it (see runTicket) as soon as the file frees.
+  const g = graphAtPath(project.graph, path);
+  const claim = g && fileBlockedBy(g, ticketId);
+  if (claim) {
+    const key = ticketScope(dir, path, ticketId);
+    const queued = registry.pendingFeedback.get(key);
+    registry.pendingFeedback.set(key, queued ? `${queued}\n\n${message}` : message);
+    store.appendLog(dir, path, ticketId, {
+      kind: "info",
+      text: `Waiting for ${claim.file}: “${claim.by.title}” is changing it.`,
+      ts: Date.now(),
+    });
+    store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "todo" }));
+    return;
+  }
+
   store.appendLog(dir, path, ticketId, { kind: "user", text: message, ts: Date.now() });
   store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
 
@@ -366,6 +390,15 @@ export async function runTicket(
     return;
   }
 
+  // A message that arrived while the ticket's file was taken: now that it is
+  // free, the ticket goes back to its own agent with what the person said.
+  const waiting = registry.pendingFeedback.get(ticketScope(dir, path, ticketId));
+  if (waiting) {
+    registry.pendingFeedback.delete(ticketScope(dir, path, ticketId));
+    await sendFeedback(dir, path, ticketId, waiting);
+    return;
+  }
+
   if (ticket.subgraph.tickets.length > 0) {
     store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
     await runGraph(dir, [...path, ticketId]);
@@ -402,8 +435,15 @@ function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
     // Never two agents in one file: a ticket whose files another unfinished
     // ticket is touching waits, without any edge between them.
     if (fileBlockedBy(g, t.id)) return false;
-    // Parents are ready only while something inside can actually progress.
-    if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
+    // Parents are ready only while something inside can actually progress —
+    // and only if nothing is already draining that subgraph. Dispatching a
+    // parent whose child loop is running returns instantly (runGraph is a
+    // no-op then), which would spin this loop as fast as the CPU allows.
+    if (t.subgraph.tickets.length > 0)
+      return (
+        !registry.loops.has(graphScope(dir, [...path, t.id])) &&
+        hasRunnableWork(t.subgraph)
+      );
     return t.status === "todo";
   });
 }

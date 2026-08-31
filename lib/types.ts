@@ -265,11 +265,13 @@ const normFile = (f: string) => f.trim().replace(/^\.?\//, "");
  * second ticket waits — computed from the files each ticket declares, never
  * stored as a dependency, so the graph draws no edge for it.
  *
- * A ticket holds its files until it is *done*, not until its agent stops: a
- * ticket sitting in review can still be sent back with feedback, which would
- * put a second agent into a file someone else had already started editing.
- * Order settles who goes first — earlier in the graph wins — except that a
- * ticket already running holds its files whatever the order.
+ * A ticket holds its files only while it is still going to work on them: once
+ * it reaches review the agent has stopped, so the next ticket takes the file
+ * without waiting for the person to approve anything. (Sending a ticket in
+ * review back with feedback makes it claim its files again, and it then waits
+ * its turn like anything else — see `sendFeedback`.) Order settles who goes
+ * first — earlier in the graph wins — except that a ticket already running
+ * holds its files whatever the order.
  */
 export function fileBlockedBy(
   g: TicketGraph,
@@ -281,7 +283,8 @@ export function fileBlockedBy(
   if (mine.length === 0) return null;
   for (let j = 0; j < g.tickets.length; j++) {
     const o = g.tickets[j];
-    if (j === i || isTicketDone(o) || !o.files?.length) continue;
+    if (j === i || isTicketDone(o) || o.status === "review") continue;
+    if (!o.files?.length) continue;
     if (j > i && o.status !== "running") continue;
     const file = o.files.map(normFile).find((f) => mine.includes(f));
     if (file) return { file, by: o };
