@@ -526,9 +526,22 @@ export default function BoardView() {
   // empties the box themselves or the message is actually sent.
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  /** What just happened to a sent note, on the card, for a few seconds: a
-   * running card's agent has it now, any other card's reads it when it starts. */
-  const [noteFlash, setNoteFlash] = useState<Record<string, string>>({});
+  /** Where a sent note has got to, on the card: in flight, then its outcome —
+   * a running card's log shows the message itself, so only the other two
+   * outcomes have anything left to say. */
+  const [noteFlash, setNoteFlash] = useState<
+    Record<string, { text: string; className: string }>
+  >({});
+  const flashNote = (
+    id: string,
+    flash: { text: string; className: string } | null
+  ) =>
+    setNoteFlash((f) => {
+      const next = { ...f };
+      if (flash) next[id] = flash;
+      else delete next[id];
+      return next;
+    });
   /** The ✓ and ✕ the server has not answered yet: ticket id → the status the
    * person's answer will give it, the status it had when they gave it, and
    * when. Both answers are the person's own decision, so the card leaves review
@@ -611,22 +624,24 @@ export default function BoardView() {
       description: withIndication(x.description, msg),
     }));
     const live = t.status === "running";
-    setNoteFlash((f) => ({
-      ...f,
-      [t.id]: live ? "Sent to the agent" : "Saved — the agent gets it when it starts",
-    }));
-    setTimeout(
-      () =>
-        setNoteFlash((f) => {
-          const next = { ...f };
-          delete next[t.id];
-          return next;
-        }),
-      8000
-    );
+    // The card says "Sending…" for exactly as long as that is true, and then
+    // says what came of it — nothing, for a card whose agent has it: the
+    // message is in the log the person is looking at.
+    flashNote(t.id, { text: "Sending…", className: "text-zinc-400" });
     // The flush inside this call is what carries the description above to the
     // server, so a card that starts a moment later already has the indication.
-    void noteTicket(path, t.id, msg);
+    void noteTicket(path, t.id, msg).then((sent) => {
+      if (!sent) {
+        flashNote(t.id, { text: "Not sent — send it again", className: "text-red-500" });
+        return;
+      }
+      if (live) return flashNote(t.id, null);
+      flashNote(t.id, {
+        text: "Saved — the agent gets it when it starts",
+        className: "text-violet-500",
+      });
+      setTimeout(() => flashNote(t.id, null), 8000);
+    });
   }
 
   function submitReject(t: Ticket) {
@@ -994,7 +1009,9 @@ export default function BoardView() {
                           ))}
                           {heldLines}
                           {noteFlash[t.id] && (
-                            <div className="text-violet-500">{noteFlash[t.id]}</div>
+                            <div className={noteFlash[t.id].className}>
+                              {noteFlash[t.id].text}
+                            </div>
                           )}
                         </div>
                         <div
@@ -1041,7 +1058,9 @@ export default function BoardView() {
                           )}
                           {heldLines}
                           {noteFlash[t.id] && (
-                            <div className="text-violet-500">{noteFlash[t.id]}</div>
+                            <div className={noteFlash[t.id].className}>
+                              {noteFlash[t.id].text}
+                            </div>
                           )}
                         </div>
                         <div

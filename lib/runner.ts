@@ -75,12 +75,16 @@ export function setProjectFlush(fn: () => Promise<void>): void {
   flushProject = fn;
 }
 
-async function call(
+/** Fires an action at the server; false means it never got there. Only worth
+ * asking for when somebody is watching for the result of this one action —
+ * everything else goes through `call`, since a run's own progress comes back
+ * through the live subscription regardless. */
+async function post(
   action: string,
-  body: { path?: string[]; ticketId?: string; message?: string } = {}
-): Promise<void> {
+  body: { path?: string[]; ticketId?: string; message?: string }
+): Promise<boolean> {
   const dir = useStore.getState().projectId;
-  if (!dir) return;
+  if (!dir) return false;
   pokeStream();
   await flushProject();
   try {
@@ -93,10 +97,19 @@ async function call(
       runs?: RunStateSnapshot;
     } | null;
     if (data?.runs) applyRunState(data.runs);
+    return res.ok;
   } catch {
     // The tab can go away mid-run; the run continues server-side and the live
     // subscription carries whatever happened next.
+    return false;
   }
+}
+
+async function call(
+  action: string,
+  body: { path?: string[]; ticketId?: string; message?: string } = {}
+): Promise<void> {
+  await post(action, body);
 }
 
 /** Run a ticket: leaf tickets go to the agent, tickets with a subgraph run the
@@ -126,13 +139,16 @@ export function sendFeedback(
  * first, so the flush inside `call` is what makes the run read it; this hands
  * it to an agent that is working right now. It never starts a card the
  * scheduler is deliberately holding back.
+ *
+ * Resolves false if it never reached the server — the card says so, because an
+ * indication nobody received is the person's to send again.
  */
 export function noteTicket(
   path: string[],
   ticketId: string,
   message: string
-): Promise<void> {
-  return call("noteTicket", { path, ticketId, message });
+): Promise<boolean> {
+  return post("noteTicket", { path, ticketId, message });
 }
 
 /** Reject a ticket in review with feedback (kanban board's red cross). */
