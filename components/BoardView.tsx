@@ -243,15 +243,13 @@ export default function BoardView() {
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
 
-      // Board tickets are non-blocking human reviews: the agent's finish
-      // ("review") already satisfies dependents, and the human's check/cross
-      // on the board is the approval step.
+      // Board tickets are human reviews: the human's check/cross on the board
+      // is the approval step, and dependents wait for it.
       const created = data.tickets.map((gt) =>
         newTicket({
           title: gt.title,
           description: gt.description,
           type: "human_review",
-          blocking: false,
           // Declared, never inferred: the board serialises cards that name the
           // same file so two agents never edit it at once.
           files: gt.files ?? [],
