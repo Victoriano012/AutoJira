@@ -13,7 +13,7 @@ import {
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { Spinner } from "./icons";
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 export type TicketNodeType = Node<
   { ticket: Ticket; path: string[]; ready: boolean },
@@ -87,6 +87,19 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const running = isTicketRunning(ticket);
   const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
 
+  // One-shot nudge on the transition into Waiting — a ticket already waiting
+  // when you arrive sits still, and it never repeats while it waits.
+  const wasWaiting = useRef(waiting);
+  const [nudge, setNudge] = useState(false);
+  useEffect(() => {
+    const entered = waiting && !wasWaiting.current;
+    wasWaiting.current = waiting;
+    if (!entered) return;
+    setNudge(true);
+    const t = setTimeout(() => setNudge(false), 300);
+    return () => clearTimeout(t);
+  }, [waiting]);
+
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
   function run() {
@@ -106,6 +119,8 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   return (
     <div
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
+        nudge ? "ticket-waiting-nudge " : ""
+      }${
         selected
           ? "border-violet-500"
           : running

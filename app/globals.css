@@ -56,3 +56,21 @@ body {
 :hover::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.4);
 }
+
+/* One-shot nudge when a ticket enters the Waiting state: it grows a little and
+   springs back, just to catch the eye — never a loop, never a state indicator. */
+@keyframes ticket-waiting-nudge {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.ticket-waiting-nudge {
+  animation: ticket-waiting-nudge 300ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket-waiting-nudge {
+    animation: none;
+  }
+}
