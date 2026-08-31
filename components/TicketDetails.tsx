@@ -36,7 +36,15 @@ export function TicketDetailsHeader({
   children?: React.ReactNode;
 }) {
   const updateTicket = useStore((s) => s.updateTicket);
-  const runLabel = ticket.subgraph.tickets.length > 0 ? "Run subgraph" : "Run";
+  const setPath = useStore((s) => s.setPath);
+  // A human ticket is a gate, not agent work: its board is the interface, so
+  // play opens it — the same thing the node does.
+  const isHuman = ticket.type === "human_review";
+  const runLabel = isHuman
+    ? "Open the human-interaction window"
+    : ticket.subgraph.tickets.length > 0
+      ? "Run subgraph"
+      : "Run";
   // Brief acknowledgement of a run click, for tickets that settle back to
   // waiting immediately and would otherwise look unresponsive.
   const [acking, ack] = useRunAck();
@@ -66,6 +74,7 @@ export function TicketDetailsHeader({
           className="shrink-0 text-emerald-600 hover:text-emerald-500"
           title={runLabel}
           onClick={() => {
+            if (isHuman) return setPath([...path, ticket.id]);
             ack();
             void runTicket(path, ticket.id);
           }}
