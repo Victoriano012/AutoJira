@@ -217,7 +217,7 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
             </div>
             <p className="mt-1 text-xs text-violet-700/70">
               The AI agent is building your ticket graph — this can take a
-              minute. Cancel to stop.
+              minute.
             </p>
           </div>
         )}
