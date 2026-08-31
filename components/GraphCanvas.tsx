@@ -1,6 +1,6 @@
 "use client";
 
-import { layoutGraph } from "@/lib/layout";
+import { layoutGraph, NODE_WIDTH } from "@/lib/layout";
 import { useStore } from "@/lib/store";
 import {
   dependenciesOf,
@@ -16,6 +16,7 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
+  useReactFlow,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -27,6 +28,74 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
+
+/** Long enough to read as movement, short enough to accompany the panel. */
+const PAN_MS = 220;
+
+/** Keeps the selected ticket clear of the details panel. The panel takes its
+ * width out of the canvas, so the canvas' own right edge is the panel's left
+ * edge: a ticket reaching past it — by a sliver or entirely — is panned
+ * horizontally until it sits in the middle of what is left, and panned back
+ * when the panel closes. The way back is clamped: whatever the user did to the
+ * graph meanwhile, the ticket never lands further right than where it started.
+ * Rendered inside <ReactFlow> so it can use the flow instance. */
+function PanForPanel({ areaRef }: { areaRef: React.RefObject<HTMLDivElement | null> }) {
+  const selectedId = useStore((s) => s.selectedId);
+  const { getNode, getViewport, setViewport } = useReactFlow();
+  // The pan in force for the current selection: where the viewport sat before
+  // it, and where we last sent it. Both are x only — y and zoom are untouched.
+  const pan = useRef<{ id: string; from: number; to: number } | null>(null);
+
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : PAN_MS;
+    const move = (x: number) => {
+      const v = getViewport();
+      if (Math.abs(x - v.x) >= 0.5) setViewport({ ...v, x }, { duration });
+    };
+
+    if (!selectedId) {
+      // Closed: undo our pan, but never past the ticket's starting position —
+      // if the user panned it further left meanwhile, keep their offset.
+      const p = pan.current;
+      pan.current = null;
+      if (p) move(p.from + Math.min(getViewport().x - p.to, 0));
+      return;
+    }
+
+    const centre = () => {
+      const node = getNode(selectedId);
+      if (!node) return;
+      const v = getViewport();
+      const width = (node.measured?.width ?? NODE_WIDTH) * v.zoom;
+      const left = v.x + node.position.x * v.zoom;
+      const held = pan.current?.id === selectedId ? pan.current : null;
+      if (!held && left + width <= area.clientWidth) {
+        // Fully visible: leave it be. Any pan held for an earlier selection is
+        // dropped rather than reversed on close — reversing it would shove the
+        // ticket the user is actually looking at off to the right.
+        pan.current = null;
+        return;
+      }
+      // Independent of the current viewport, so recomputing mid-animation
+      // (a panel resize) aims at the same place instead of drifting.
+      const to = area.clientWidth / 2 - width / 2 - node.position.x * v.zoom;
+      pan.current = { id: selectedId, from: held?.from ?? v.x, to };
+      move(to);
+    };
+
+    centre();
+    // The panel is drag-resizable: follow it while it is open.
+    const ro = new ResizeObserver(centre);
+    ro.observe(area);
+    return () => ro.disconnect();
+  }, [selectedId, areaRef, getNode, getViewport, setViewport]);
+
+  return null;
+}
 
 export function GraphCanvas() {
   const project = useStore((s) => s.project);
@@ -187,6 +256,7 @@ export function GraphCanvas() {
         onNodesDelete={(deleted) => deleted.forEach((n) => removeTicket(path, n.id))}
         onEdgesDelete={(deleted) => deleted.forEach((e) => removeEdge(path, e.id))}
       >
+        <PanForPanel areaRef={wrapperRef} />
         <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
         <Controls />
       </ReactFlow>
