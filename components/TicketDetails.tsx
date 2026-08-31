@@ -13,6 +13,7 @@ import {
 } from "@/lib/types";
 import AttachmentEditor from "./AttachmentEditor";
 import { ArrowRightIcon, PlayIcon, StopIcon } from "./icons";
+import { ackKey, ackSubgraphRun, useTicketAck } from "./useRunAck";
 
 const statusColor: Record<TicketStatus, string> = {
   todo: "bg-zinc-500",
@@ -40,6 +41,9 @@ export function TicketDetailsHeader({
   // play opens it — the same thing the node does.
   const isHuman = ticket.type === "human_review";
   const hasSubgraph = ticket.subgraph.tickets.length > 0;
+  // Same beat of Running the node and the toolbar give a subgraph run that
+  // settles before the click is over.
+  const swept = useTicketAck(ackKey(path, ticket.id));
   const runLabel = isHuman
     ? hasSubgraph
       ? "Open the human-interaction window and start its board"
@@ -60,7 +64,7 @@ export function TicketDetailsHeader({
       />
       {/* Stop belongs to the running state only: a parent still marked
           "running" with nothing working inside is waiting, so it gets play. */}
-      {isTicketRunning(ticket) ? (
+      {isTicketRunning(ticket) || swept ? (
         <>
           {/* Play is gone while running, so a human ticket would lose its only
               way into the board: offer the navigation on its own. */}
@@ -89,6 +93,8 @@ export function TicketDetailsHeader({
             if (isHuman) {
               setPath([...path, ticket.id]);
               if (!hasSubgraph) return; // empty board: just open it
+            } else if (hasSubgraph) {
+              ackSubgraphRun(path, ticket);
             }
             void runTicket(path, ticket.id);
           }}

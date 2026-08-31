@@ -14,7 +14,7 @@ import {
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { ArrowRightIcon, Spinner } from "./icons";
-import { ackKey, useTicketAck } from "./useRunAck";
+import { ackKey, ackSubgraphRun, useTicketAck } from "./useRunAck";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 export type TicketNodeType = Node<
@@ -141,6 +141,11 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
     if (ticket.type === "human_review") {
       useStore.getState().setPath([...path, ticket.id]);
       if (ticket.subgraph.tickets.length === 0) return; // empty board: just open it
+    } else if (ticket.subgraph.tickets.length > 0) {
+      // Running a subgraph from out here is the toolbar's play from in there,
+      // so it gets the toolbar's feedback too. Never for a human ticket: its
+      // board opens and this node unmounts, so the beat would go nowhere.
+      ackSubgraphRun(path, ticket);
     }
     void runTicket(path, ticket.id);
   }

@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  dependenciesOf,
+  isTicketWaiting,
+  satisfiesDependents,
+  Ticket,
+} from "@/lib/types";
 
 /** Acknowledge a run click: report "running" for a beat so a ticket that
  * settles straight back to Waiting still visibly reacts to the press. Purely
@@ -61,6 +67,23 @@ export function ackTickets(keys: string[], ms = 500): void {
     );
   }
   notify();
+}
+
+/** Running a ticket's subgraph from outside it, given the same feedback as the
+ * toolbar's play once you've navigated in: the beat of Running on the ticket
+ * itself, and the nudge on the tickets inside this run can only park on again
+ * (waiting on their human), waiting for him to come in and see it. */
+export function ackSubgraphRun(path: string[], ticket: Ticket): void {
+  const g = ticket.subgraph;
+  const inner = [...path, ticket.id];
+  ackTickets([
+    ackKey(path, ticket.id),
+    ...g.tickets
+      .filter((t) =>
+        isTicketWaiting(t, dependenciesOf(g, t.id).every(satisfiesDependents)),
+      )
+      .map((t) => ackKey(inner, t.id)),
+  ]);
 }
 
 export function useTicketAck(key: string): boolean {
