@@ -92,3 +92,27 @@ body {
     animation: none;
   }
 }
+
+/* Drilling into a ticket, and back out. The view frame is put where the card
+   was (or, going out, blown up so the card being returned to fills it) and then
+   transitioned to identity — a FLIP, so nothing relayouts mid-flight: a canvas
+   and a four-column board both measure their own untransformed box. The start
+   transform is computed in `app/page.tsx`; only the timing lives here.
+   Pointer-events are off for the flight so a click can't land on a view that is
+   still travelling. */
+.view-zoom {
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: transform 240ms ease-out, opacity 180ms ease-out;
+}
+
+.view-zoom-out {
+  transition-timing-function: ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-zoom,
+  .view-zoom-out {
+    transition: none;
+  }
+}
