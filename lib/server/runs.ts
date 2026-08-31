@@ -202,6 +202,19 @@ async function runAgentSession(
   return { ok, text: finalText, aborted: ctrl.signal.aborted };
 }
 
+/** True when the graph at `path` is a human ticket's kanban board. Its tickets
+ * are cards the human asked for, so they are ordinary agent work even though
+ * they carry type "human_review" (which is what puts them in the board's
+ * "Ready for review" column, with the ✓/✕, once the agent is done). Only a
+ * human ticket that is *not* a card is a gate. */
+function isBoard(dir: string, path: string[]): boolean {
+  if (path.length === 0) return false;
+  const project = store.getProject(dir);
+  const parent =
+    project && ticketAtPath(project.graph, path.slice(0, -1), path[path.length - 1]);
+  return parent?.type === "human_review";
+}
+
 /** Run one leaf ticket (no subgraph) with the agent. */
 async function runLeafTicket(dir: string, path: string[], ticketId: string): Promise<void> {
   const project = store.getProject(dir);
@@ -342,10 +355,12 @@ export async function runTicket(
       ...t,
       status: t.subgraph.tickets.every(isTicketDone) ? "done" : "todo",
     }));
-  } else if (ticket.type === "human_review") {
+  } else if (ticket.type === "human_review" && !isBoard(dir, path)) {
     // A human ticket with no board has nothing for an agent to do: it is a
     // gate, so running it just hands it to the person. (Their own messages
-    // still open a session — that goes through sendFeedback.)
+    // still open a session — that goes through sendFeedback.) A card on a
+    // board is the opposite: the human already said what they want, so it
+    // runs like any other leaf and lands in review when the agent is done.
     store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "review" }));
   } else {
     await runLeafTicket(dir, path, ticketId);
@@ -473,7 +488,9 @@ function settleZombie(dir: string, path: string[], ticketId: string): void {
     store.updateTicket(dir, path, ticketId, (x) => ({
       ...x,
       status:
-        x.type === "human_review" && x.subgraph.tickets.length === 0
+        x.type === "human_review" &&
+        x.subgraph.tickets.length === 0 &&
+        !isBoard(dir, path)
           ? "review"
           : "todo",
     }));
