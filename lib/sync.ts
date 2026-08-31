@@ -25,7 +25,12 @@ async function createOrImport(body: { name?: string; path?: string }) {
 export const createProject = (name: string) => createOrImport({ name });
 export const importProject = (path: string) => createOrImport({ path });
 
-export async function openProject(id: string): Promise<void> {
+/** `hold` lets the caller keep the picker on screen a moment longer: opening a
+ * project from the meta-graph grows its node into the whole view, and the swap
+ * belongs at the end of that growth, not whenever the fetch happens to land.
+ * The fetch still starts immediately, so the animation costs nothing — if it is
+ * the slower of the two, "Loading project…" simply sits behind the box. */
+export async function openProject(id: string, hold?: Promise<void>): Promise<void> {
   const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
   if (!res.ok) {
     // folder gone or .autojira deleted — forget it
@@ -36,6 +41,7 @@ export async function openProject(id: string): Promise<void> {
   // The server settles anything a dead process left marked running before it
   // answers, so this data is already the truth about what is running.
   base = row.data;
+  if (hold) await hold;
   useStore.getState().openProject(id, row.data);
 }
 

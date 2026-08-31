@@ -8,6 +8,7 @@ import {
   openProject,
   saveMetaPosition,
 } from "@/lib/sync";
+import { zoomIntoProject } from "@/lib/view-zoom";
 import {
   applyNodeChanges,
   Background,
@@ -381,7 +382,12 @@ export default function ProjectPicker() {
             zoomOnDoubleClick={false}
             onNodesChange={onNodesChange}
             onNodeDragStop={(_, node) => void saveMetaPosition(node.id, node.position)}
-            onNodeDoubleClick={(_, node) => void openProject(node.id)}
+            // A project is the outermost ticket, so opening one moves like
+            // opening any other: its node grows into the whole view while the
+            // fetch runs behind it.
+            onNodeDoubleClick={(_, node) =>
+              void openProject(node.id, zoomIntoProject(node.id))
+            }
           >
             <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
             <Controls />

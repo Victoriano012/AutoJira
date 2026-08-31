@@ -93,26 +93,29 @@ body {
   }
 }
 
-/* Drilling into a ticket, and back out. The view frame is put where the card
-   was (or, going out, blown up so the card being returned to fills it) and then
-   transitioned to identity — a FLIP, so nothing relayouts mid-flight: a canvas
-   and a four-column board both measure their own untransformed box. The start
-   transform is computed in `app/page.tsx`; only the timing lives here.
-   Pointer-events are off for the flight so a click can't land on a view that is
-   still travelling. */
-.view-zoom {
+/* The card that travels between a ticket and the view inside it: a rounded rect
+   in that ticket's status colour, grown from the card to the frame or collapsed
+   back onto it. Geometry, not transform — scaling would smear the 2px border
+   and the corner radius. Everything that moves is set from `lib/view-zoom.ts`;
+   only the look lives here.
+
+   Under the modals (z-50) and over the depth frames (z-10). The shield sits on
+   top of the box, transparent, absorbing clicks for the flight. */
+.zoom-box {
+  position: fixed;
+  z-index: 40;
+  display: none;
   pointer-events: none;
-  will-change: transform, opacity;
-  transition: transform 240ms ease-out, opacity 180ms ease-out;
+  background: #fff;
+  border: 2px solid #d4d4d8;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgb(24 24 27 / 0.1);
+  will-change: left, top, width, height, opacity;
 }
 
-.view-zoom-out {
-  transition-timing-function: ease-in;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .view-zoom,
-  .view-zoom-out {
-    transition: none;
-  }
+.zoom-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: none;
 }

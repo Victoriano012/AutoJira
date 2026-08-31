@@ -1,12 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import BoardView from "@/components/BoardView";
 import ChatPanel from "@/components/ChatPanel";
 import TicketPanel from "@/components/TicketPanel";
 import Toolbar from "@/components/Toolbar";
-import { consumeViewZoom, useStore } from "@/lib/store";
+import { useStore } from "@/lib/store";
 import { openProject, startAutosave } from "@/lib/sync";
 import { ticketAtPath } from "@/lib/types";
 
@@ -17,80 +17,6 @@ const GraphCanvas = dynamic(
 const ProjectPicker = dynamic(() => import("@/components/ProjectPicker"), { ssr: false });
 
 const emptySubscribe = () => () => {};
-
-/** Matches the `.view-zoom` transition in globals.css. */
-const ZOOM_MS = 240;
-
-/**
- * The clipped frame the current view lives in. On every navigation it grows out
- * of the card that was opened, or shrinks back into the card being returned to
- * — the rect comes from `setPath`, the only moment the outgoing view is still on
- * screen to be measured (see `consumeViewZoom`).
- *
- * Only the frame's own `transform` moves, never its size: scaling the box would
- * relayout a React Flow canvas or a four-column board on every frame. Its
- * children measure their untransformed box, so they lay out once, at the size
- * they will end at, and the transform just carries them there.
- *
- * Rendered below the mount guard so this layout effect never runs on the server.
- */
-function ZoomFrame({ inset, children }: { inset: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const pathKey = useStore((s) => s.path.join("/"));
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    const zoom = consumeViewZoom();
-    if (!el || !zoom) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const box = el.getBoundingClientRect();
-    if (!box.width || !box.height) return;
-
-    if (zoom.rect) {
-      const dx = zoom.rect.left - box.left;
-      const dy = zoom.rect.top - box.top;
-      const sx = zoom.rect.width / box.width;
-      const sy = zoom.rect.height / box.height;
-      el.style.transformOrigin = "0 0";
-      el.style.transform =
-        zoom.dir === "in"
-          ? `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
-          : `translate(${-dx / sx}px, ${-dy / sy}px) scale(${1 / sx}, ${1 / sy})`;
-    } else {
-      // No card to grow out of — a reload, or a breadcrumb jump past the level
-      // whose rect we kept. Scale from the middle rather than from a guess.
-      el.style.transformOrigin = "50% 50%";
-      el.style.transform = `scale(${zoom.dir === "in" ? 0.9 : 1.1})`;
-    }
-    el.style.opacity = "0";
-
-    // One frame with the start state committed and no transition, then release.
-    const raf = requestAnimationFrame(() => {
-      el.classList.add("view-zoom");
-      if (zoom.dir === "out") el.classList.add("view-zoom-out");
-      el.style.transform = "";
-      el.style.opacity = "";
-    });
-    const clear = () => {
-      el.classList.remove("view-zoom", "view-zoom-out");
-      el.style.transform = "";
-      el.style.opacity = "";
-      el.style.transformOrigin = "";
-    };
-    const done = window.setTimeout(clear, ZOOM_MS + 60);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(done);
-      clear();
-    };
-  }, [pathKey]);
-
-  return (
-    <div ref={ref} className="absolute overflow-hidden rounded-lg" style={{ inset }}>
-      {children}
-    </div>
-  );
-}
 
 export default function Home() {
   // The store persists to localStorage; render only on the client to avoid
@@ -146,10 +72,13 @@ export default function Home() {
       <div className="flex-1 flex min-h-0">
         <main className="flex-1 relative min-w-0">
           {/* Clip the view to the innermost depth frame so tickets don't
-              slide under the layer borders. */}
-          <ZoomFrame inset={3 + depth * 4}>
+              slide under the layer borders. Navigating swaps what is in here
+              instantly, hidden behind the travelling card (see
+              `lib/view-zoom.ts`) — the view itself never animates, so a canvas
+              mounts at its real size and measures its arrows correctly. */}
+          <div className="absolute overflow-hidden rounded-lg" style={{ inset: 3 + depth * 4 }}>
             {showBoard ? <BoardView key={boardKey} /> : <GraphCanvas />}
-          </ZoomFrame>
+          </div>
           {/* One nested outline per level — the open project itself counts as
               one level of the meta-graph, so root shows a single frame. The
               frames are the chrome that says how deep you are, so they hold

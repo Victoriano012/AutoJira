@@ -11,6 +11,7 @@ import {
   Ticket,
   TicketGraph,
 } from "./types";
+import { zoomOutOfProject, zoomPath } from "./view-zoom";
 
 interface AppState {
   /** Server id of the open project; null = show the project picker. */
@@ -76,68 +77,6 @@ function rewriteAt(
   };
 }
 
-/**
- * Where the ticket a navigation is drilling into (or out of) sits on screen, so
- * the view swap can grow out of that card instead of just appearing — the
- * animation itself lives in `app/page.tsx`.
- *
- * Recorded here rather than at the ~7 `setPath` call sites because `setPath`
- * runs while the outgoing view is still on screen: this is the one moment the
- * card's rect can be read, and doing it centrally covers every entry point
- * (node, details panel, breadcrumb, back, swipe, the board's "All good").
- *
- * Kept in a plain object, not in store state: it is read once by a layout
- * effect and must never re-render the tree. On `window` for the same reason the
- * store is (see the note at the bottom of this file) — after a Fast Refresh the
- * mounted `setPath` closure and the freshly imported reader must still be
- * talking about the same object.
- */
-type ViewZoom = { rect: DOMRect | null; dir: "in" | "out" };
-type ZoomState = { rects: Map<string, DOMRect>; pending: ViewZoom | null };
-const zoomWin =
-  typeof window === "undefined"
-    ? null
-    : (window as unknown as { __autojiraViewZoom?: ZoomState });
-const zoom: ZoomState = zoomWin?.__autojiraViewZoom ?? { rects: new Map(), pending: null };
-if (zoomWin) zoomWin.__autojiraViewZoom = zoom;
-
-function isPrefix(a: string[], b: string[]) {
-  return a.length <= b.length && a.every((x, i) => x === b[i]);
-}
-
-/** Note the card `from` → `to` is zooming through, for the view to animate from
- * (going in) or back into (going out). Going out, the card belongs to a view
- * that has not mounted yet, so its rect cannot be measured — we reuse the one
- * taken on the way in, which is right unless that graph was panned meanwhile.
- * A rect we don't have (fresh reload, breadcrumb jump past a level) is left
- * null and the view scales from its centre instead. */
-function recordZoom(from: string[], to: string[]) {
-  zoom.pending = null;
-  if (typeof document === "undefined" || from.length === to.length) return;
-  if (isPrefix(to, from) && to.length < from.length) {
-    zoom.pending = { rect: zoom.rects.get(from.slice(0, to.length + 1).join("/")) ?? null, dir: "out" };
-  } else if (isPrefix(from, to) && from.length < to.length) {
-    const id = to[from.length];
-    const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
-    const rect = el?.getBoundingClientRect() ?? null;
-    if (rect) zoom.rects.set(to.slice(0, from.length + 1).join("/"), rect);
-    zoom.pending = { rect, dir: "in" };
-  } else {
-    zoom.pending = { rect: null, dir: to.length > from.length ? "in" : "out" };
-  }
-  // Only the cards on the way down to `to` can still be zoomed back into.
-  for (const key of zoom.rects.keys()) {
-    if (!isPrefix(key.split("/"), to)) zoom.rects.delete(key);
-  }
-}
-
-/** Reads and clears the rect recorded by the last `setPath`. */
-export function consumeViewZoom(): ViewZoom | null {
-  const z = zoom.pending;
-  zoom.pending = null;
-  return z;
-}
-
 const freshStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -173,11 +112,21 @@ const freshStore = create<AppState>()(
                 : null,
           };
         }),
-      closeProject: () => set({ projectId: null, projectLoaded: false, path: [], selectedId: null }),
+      // Both navigations travel: the view folds back into the project's node on
+      // the meta-graph, and drilling in grows out of the card. The animation
+      // owns *when* the state changes (going in it is deferred until the
+      // growing box covers the frame, so the graph being left stays visible
+      // behind it), so the commit is handed to it rather than run here.
+      closeProject: () => {
+        const s = get();
+        zoomOutOfProject(s.projectId, s.path.length, s.selectedId !== null, () =>
+          set({ projectId: null, projectLoaded: false, path: [], selectedId: null })
+        );
+      },
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
       setPath: (path) => {
-        recordZoom(get().path, path);
-        set({ path, selectedId: null });
+        const s = get();
+        zoomPath(s.path, path, s.selectedId !== null, () => set({ path, selectedId: null }));
       },
       // The ticket panel and the chat drawer share the same space — only one open at a time.
       select: (id) => set((s) => ({ selectedId: id, chatOpen: id === null ? s.chatOpen : false })),
