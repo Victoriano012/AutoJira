@@ -33,9 +33,11 @@ const nodeTypes: NodeTypes = { ticket: TicketNode };
 const PAN_MS = 220;
 
 /** A double-click opens the ticket's subgraph, and its first click selects —
- * so the pan below waits this long before moving anything, leaving the node
- * still under the pointer for the second click. Covers a comfortable
- * double-click without the pan losing its immediacy. */
+ * which opens the details panel, takes its width out of the canvas and leaves
+ * a right-hand ticket sitting underneath the panel, so the second click lands
+ * on the panel instead of the ticket. Selecting therefore waits this long:
+ * nothing covers or moves the ticket until the double-click window has passed.
+ * Covers a comfortable double-click without the panel feeling sluggish. */
 const DOUBLE_CLICK_GRACE_MS = 260;
 
 /** Keeps the selected ticket clear of the details panel. The panel takes its
@@ -93,23 +95,11 @@ function PanForPanel({ areaRef }: { areaRef: React.RefObject<HTMLDivElement | nu
       move(to);
     };
 
-    // Hold still for a moment first: a double-click navigates into the ticket's
-    // subgraph, and panning out from under the pointer makes its second click
-    // miss. Clearing the timer on selection change, panel close and unmount
-    // keeps a stale pan from firing for a ticket that is no longer selected;
-    // the double-click's own navigation clears the selection, so its pan is
-    // cancelled rather than played into a graph that has been replaced.
-    let ro: ResizeObserver | undefined;
-    const timer = window.setTimeout(() => {
-      centre();
-      // The panel is drag-resizable: follow it while it is open.
-      ro = new ResizeObserver(centre);
-      ro.observe(area);
-    }, DOUBLE_CLICK_GRACE_MS);
-    return () => {
-      clearTimeout(timer);
-      ro?.disconnect();
-    };
+    centre();
+    // The panel is drag-resizable: follow it while it is open.
+    const ro = new ResizeObserver(centre);
+    ro.observe(area);
+    return () => ro.disconnect();
   }, [selectedId, areaRef, getNode, getViewport, setViewport]);
 
   return null;
@@ -163,6 +153,11 @@ export function GraphCanvas() {
     el.addEventListener("wheel", onWheel, { capture: true, passive: false });
     return () => el.removeEventListener("wheel", onWheel, { capture: true });
   }, []);
+
+  // Selecting is held back for the double-click window (see the constant above);
+  // deselecting has no such problem and stays immediate.
+  const selectTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => clearTimeout(selectTimer.current), []);
 
   // Rendered client-only (dynamic ssr:false) and the store hydrates
   // synchronously from localStorage, so no mount guard is needed.
@@ -268,9 +263,21 @@ export function GraphCanvas() {
         onNodeDragStop={(_, node) =>
           updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
         }
-        onNodeClick={(_, node) => select(node.id)}
-        onNodeDoubleClick={(_, node) => setPath([...path, node.id])}
-        onPaneClick={() => select(null)}
+        onNodeClick={(_, node) => {
+          clearTimeout(selectTimer.current);
+          selectTimer.current = window.setTimeout(
+            () => select(node.id),
+            DOUBLE_CLICK_GRACE_MS
+          );
+        }}
+        onNodeDoubleClick={(_, node) => {
+          clearTimeout(selectTimer.current);
+          setPath([...path, node.id]);
+        }}
+        onPaneClick={() => {
+          clearTimeout(selectTimer.current);
+          select(null);
+        }}
         onNodesDelete={(deleted) => deleted.forEach((n) => removeTicket(path, n.id))}
         onEdgesDelete={(deleted) => deleted.forEach((e) => removeEdge(path, e.id))}
       >
