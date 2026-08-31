@@ -5,8 +5,10 @@ import {
   fileBlockedBy,
   fileBlockees,
   isTicketDone,
+  notReadyReason,
   satisfiesDependents,
   satisfiesDependentsOnBoard,
+  stuckCards,
 } from "../lib/types.ts";
 import type { Ticket, TicketGraph } from "../lib/types.ts";
 
@@ -142,4 +144,87 @@ test("a claim names one file per pair, and the holder sees who waits", () => {
   assert.deepEqual(waiting.files, ["a.ts", "b.ts"]);
   // Nobody waits on a file nobody else declared.
   assert.equal(fileBlockees(graph, "B", true).length, 0);
+});
+
+/**
+ * The board's promise: a card in Working has an agent on it or is about to get
+ * one. It broke because the person's stop lived only in the server's registry —
+ * `boardColumn` cannot see that, so every stopped card sat in Working saying
+ * "Queued" with nothing ever starting it. `notReadyReason` is the scheduler's
+ * own answer, and `stuckCards` is the board checked against it.
+ */
+
+test("a stop the board cannot see is exactly the lie", () => {
+  const graph = g([t({ id: "A", type: "human_review" })]);
+  const card = graph.tickets[0];
+  // The registry stopped it. Nothing on the ticket says so, so the board puts
+  // it in Working and labels it Queued — and the scheduler never starts it.
+  const stopped = { stopped: () => true };
+  assert.equal(boardColumn(graph, card, true), "working");
+  assert.equal(notReadyReason(graph, card, true, stopped), "the person stopped it");
+  assert.deepEqual(
+    stuckCards(graph, stopped).map((s) => s.ticket.id),
+    ["A"]
+  );
+  // Persisting the same stop as `paused` is the fix: the board reads it, puts
+  // the card in Blocked with a Run button, and the promise holds again.
+  const parked = g([t({ id: "A", type: "human_review", paused: true })]);
+  assert.equal(boardColumn(parked, parked.tickets[0], true), "blocked");
+  assert.deepEqual(stuckCards(parked, stopped), []);
+});
+
+test("a card the board already shows as Blocked is not a lie", () => {
+  // Both reasons the board renders: an unmet dependency and a held file. The
+  // scheduler refuses these too, and says why, but the card is in Blocked.
+  const deps = g(
+    [t({ id: "up", type: "human_review" }), t({ id: "down", type: "human_review" })],
+    [["up", "down"]]
+  );
+  assert.equal(notReadyReason(deps, deps.tickets[1], true), 'waiting on “up”');
+  assert.deepEqual(stuckCards(deps), []);
+
+  const files = g([
+    t({ id: "A", type: "human_review", status: "running", files: ["a.ts"] }),
+    t({ id: "B", type: "human_review", files: ["a.ts"] }),
+  ]);
+  assert.equal(
+    notReadyReason(files, files.tickets[1], true),
+    'waiting for a.ts, held by “A”'
+  );
+  assert.deepEqual(stuckCards(files), []);
+});
+
+test("a card that says what it is cannot be lying", () => {
+  // Working holds three kinds of card. Only "Queued" promises an agent is
+  // coming; a spinner and a Failed-with-Retry both say where they really are.
+  for (const status of ["running", "error"] as const) {
+    const graph = g([t({ id: "A", type: "human_review", status })]);
+    assert.equal(boardColumn(graph, graph.tickets[0], true), "working");
+    assert.deepEqual(stuckCards(graph, { stopped: () => true }), []);
+  }
+  // And a healthy queued card is the promise being kept, not broken.
+  const ready = g([t({ id: "A", type: "human_review" })]);
+  assert.equal(notReadyReason(ready, ready.tickets[0], true), null);
+  assert.deepEqual(stuckCards(ready), []);
+});
+
+test("the scheduler's refusals and the board's Working column line up", () => {
+  // The whole invariant in one shape: whatever the scheduler will not start is
+  // a card the board does not show as Queued.
+  const graph = g(
+    [
+      t({ id: "done", type: "human_review", status: "done" }),
+      t({ id: "gate", type: "human_review", status: "review" }),
+      t({ id: "runs", type: "human_review", status: "running", files: ["a.ts"] }),
+      t({ id: "waits", type: "human_review", files: ["a.ts"] }),
+      t({ id: "held", type: "human_review" }),
+      t({ id: "off", type: "human_review", paused: true }),
+      t({ id: "go", type: "human_review" }),
+    ],
+    [["gate", "held"]]
+  );
+  const ready = graph.tickets.filter((x) => notReadyReason(graph, x, true) === null);
+  // A board card in review does not gate the rest of the board, so "held" runs.
+  assert.deepEqual(ready.map((x) => x.id), ["held", "go"]);
+  assert.deepEqual(stuckCards(graph), []);
 });

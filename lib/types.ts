@@ -391,6 +391,74 @@ export function hasRunnableWork(g: TicketGraph): boolean {
   });
 }
 
+/** The two things only the running server knows, asked as questions so the
+ * scheduling rules below stay pure and testable: which tickets the person
+ * stopped, and which subgraphs are already being drained. */
+export interface SchedulerFacts {
+  stopped?: (ticketId: string) => boolean;
+  draining?: (ticketId: string) => boolean;
+}
+
+/**
+ * Why the scheduler will not start this ticket right now, in words, or null
+ * when it would. The server's `readyTickets` is exactly the tickets this
+ * answers null for — one definition, so "will it run" and "why not" can never
+ * drift apart, and the board can be checked against it (see `stuckCards`).
+ */
+export function notReadyReason(
+  g: TicketGraph,
+  t: Ticket,
+  onBoard: boolean,
+  facts: SchedulerFacts = {}
+): string | null {
+  if (isTicketDone(t)) return "it is done";
+  // Stopped by the person: `paused` is the persisted version of the same thing,
+  // so a card they stopped stays stopped across a server restart.
+  if (t.paused) return "the person paused it";
+  if (facts.stopped?.(t.id)) return "the person stopped it";
+  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
+  const unmet = dependenciesOf(g, t.id).filter((d) => !satisfies(d));
+  if (unmet.length > 0)
+    return `waiting on ${unmet.map((d) => `“${d.title}”`).join(", ")}`;
+  // Never two agents in one file: a ticket whose files another unfinished
+  // ticket is touching waits, without any edge between them.
+  const claim = fileBlockedBy(g, t.id, onBoard);
+  if (claim) return `waiting for ${claim.file}, held by “${claim.by.title}”`;
+  // Parents are ready only while something inside can actually progress — and
+  // only if nothing is already draining that subgraph. Dispatching a parent
+  // whose child loop is running returns instantly, which would spin the
+  // scheduler as fast as the CPU allows.
+  if (t.subgraph.tickets.length > 0) {
+    if (facts.draining?.(t.id)) return "its subgraph is already being drained";
+    return hasRunnableWork(t.subgraph) ? null : "nothing inside it can progress";
+  }
+  return t.status === "todo" ? null : `its status is ${t.status}`;
+}
+
+/**
+ * The board's one promise, checked: a card the person sees in Working either
+ * has an agent on it or is about to get one. Every card that breaks it, with
+ * the reason the scheduler gave — an empty list is the invariant holding.
+ *
+ * Only "todo" can lie. A card in Working with a spinner is running, and one
+ * showing Failed says so and offers Retry; "Queued" is the one label that
+ * promises an agent is coming. If the scheduler will not start such a card, it
+ * belongs in Blocked with the reason, and the reason is what this returns.
+ */
+export function stuckCards(
+  g: TicketGraph,
+  facts: SchedulerFacts = {}
+): { ticket: Ticket; why: string }[] {
+  const out: { ticket: Ticket; why: string }[] = [];
+  for (const t of g.tickets) {
+    if (t.status !== "todo") continue;
+    if (boardColumn(g, t, true) !== "working") continue;
+    const why = notReadyReason(g, t, true, facts);
+    if (why) out.push({ ticket: t, why });
+  }
+  return out;
+}
+
 export function ticketProgress(t: Ticket): { done: number; total: number } | null {
   if (t.subgraph.tickets.length === 0) return null;
   return {
