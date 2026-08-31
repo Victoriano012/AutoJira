@@ -53,6 +53,9 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
       `\n\n${req.prompt}`;
   }
 
+  // Aborting this kills the agent process (after the SDK's own short grace
+  // period); it is the backstop for a stop the session will not answer.
+  const kill = new AbortController();
   const q = query({
     prompt: fullPrompt,
     options: {
@@ -60,19 +63,38 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       maxTurns: 150,
+      abortController: kill,
       ...modelOption(),
       ...(req.sessionId ? { resume: req.sessionId } : {}),
     },
   });
+
+  // Stopping is a control message to the running session, so it can only be
+  // delivered once the session is up: sent before that it resolves happily and
+  // does nothing, and the agent runs on for as long as its work takes (the
+  // "I pressed stop and it kept going" bug). So the stop is held until init.
+  let live = false;
+  let sent = false;
   const interrupt = () => {
+    if (!live || sent) return;
+    sent = true;
     q.interrupt().catch(() => {});
   };
-  if (req.signal.aborted) interrupt();
-  req.signal.addEventListener("abort", interrupt);
+  const onAbort = () => {
+    interrupt();
+    // If the session will not stop on its own — a tool call that never returns,
+    // a session that never came up — end the process rather than leaving the
+    // person watching a ticket they already stopped.
+    setTimeout(() => kill.abort(), 8000).unref?.();
+  };
+  if (req.signal.aborted) onAbort();
+  req.signal.addEventListener("abort", onAbort);
 
   try {
     for await (const msg of q) {
       if (msg.type === "system" && msg.subtype === "init") {
+        live = true;
+        if (req.signal.aborted) interrupt();
         yield { type: "init", sessionId: msg.session_id };
       } else if (msg.type === "assistant") {
         for (const block of msg.message.content) {
@@ -91,6 +113,6 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
   } catch (err) {
     yield { type: "error", message: String(err) };
   } finally {
-    req.signal.removeEventListener("abort", interrupt);
+    req.signal.removeEventListener("abort", onAbort);
   }
 }
