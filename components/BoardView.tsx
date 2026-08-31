@@ -526,22 +526,36 @@ export default function BoardView() {
   // empties the box themselves or the message is actually sent.
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  /** Where a sent note has got to, on the card: in flight, then its outcome —
-   * a running card's log shows the message itself, so only the other two
-   * outcomes have anything left to say. */
+  /** Where a sent note has got to, on the card: in flight, then its outcome. */
   const [noteFlash, setNoteFlash] = useState<
     Record<string, { text: string; className: string }>
   >({});
-  const flashNote = (
+  // One line per card, so a line that clears itself must not outlive the note
+  // it belongs to: a second note takes the line over, timer and all.
+  const noteTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  function flashNote(
     id: string,
-    flash: { text: string; className: string } | null
-  ) =>
+    flash: { text: string; className: string } | null,
+    clearAfter?: number
+  ) {
+    clearTimeout(noteTimers.current.get(id));
+    noteTimers.current.delete(id);
     setNoteFlash((f) => {
       const next = { ...f };
       if (flash) next[id] = flash;
       else delete next[id];
       return next;
     });
+    if (flash && clearAfter) {
+      noteTimers.current.set(
+        id,
+        setTimeout(() => flashNote(id, null), clearAfter)
+      );
+    }
+  }
+  /** Which note owns a card's line: an earlier one that lands late has nothing
+   * left to say, and saying it would strand its wording over a newer note. */
+  const noteSeq = useRef(new Map<string, number>());
   /** The ✓ and ✕ the server has not answered yet: ticket id → the status the
    * person's answer will give it, the status it had when they gave it, and
    * when. Both answers are the person's own decision, so the card leaves review
@@ -624,23 +638,35 @@ export default function BoardView() {
       description: withIndication(x.description, msg),
     }));
     const live = t.status === "running";
+    const mine = (noteSeq.current.get(t.id) ?? 0) + 1;
+    noteSeq.current.set(t.id, mine);
     // The card says "Sending…" for exactly as long as that is true, and then
-    // says what came of it — nothing, for a card whose agent has it: the
-    // message is in the log the person is looking at.
+    // what came of it. The round trip is usually too quick to read, so the
+    // answer for a working card stays up on its own: the agent has the
+    // indication from its next turn, not at some later stop.
     flashNote(t.id, { text: "Sending…", className: "text-zinc-400" });
     // The flush inside this call is what carries the description above to the
     // server, so a card that starts a moment later already has the indication.
     void noteTicket(path, t.id, msg).then((sent) => {
+      if (noteSeq.current.get(t.id) !== mine) return;
       if (!sent) {
         flashNote(t.id, { text: "Not sent — send it again", className: "text-red-500" });
-        return;
+      } else if (live) {
+        flashNote(
+          t.id,
+          { text: "Sent — the agent has it now", className: "text-violet-500" },
+          2500
+        );
+      } else {
+        flashNote(
+          t.id,
+          {
+            text: "Saved — the agent gets it when it starts",
+            className: "text-violet-500",
+          },
+          8000
+        );
       }
-      if (live) return flashNote(t.id, null);
-      flashNote(t.id, {
-        text: "Saved — the agent gets it when it starts",
-        className: "text-violet-500",
-      });
-      setTimeout(() => flashNote(t.id, null), 8000);
     });
   }
 
