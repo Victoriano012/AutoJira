@@ -167,29 +167,6 @@ export default function TicketDetails({
         </span>
       </div>
 
-      {ticket.type === "human_review" && (
-        <label className="flex items-start gap-2 text-xs text-zinc-600 cursor-pointer">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-amber-500"
-            checked={ticket.blocking !== false}
-            onChange={(e) =>
-              updateTicket(path, ticket.id, (t) => ({
-                ...t,
-                blocking: e.target.checked,
-              }))
-            }
-          />
-          <span>
-            Blocks dependents until approved
-            <span className="block text-zinc-400">
-              Unchecked: dependents start right after the AI finishes, on a new
-              git branch, while you review this one.
-            </span>
-          </span>
-        </label>
-      )}
-
       <textarea
         className="w-full min-h-28 rounded-lg bg-white border border-zinc-300 p-2 text-sm outline-none focus:border-zinc-500"
         placeholder="Describe what this ticket should accomplish…"
