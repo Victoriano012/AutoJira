@@ -103,6 +103,36 @@ function writeDraft(pathKey: string, value: string) {
   }
 }
 
+/** Requests that have been sent but not turned into tickets yet, per board. */
+const REQUESTS_KEY = "autojira-board-requests:";
+function readRequests(pathKey: string): PendingRequest[] {
+  try {
+    const raw = sessionStorage.getItem(REQUESTS_KEY + pathKey);
+    const rows = raw ? (JSON.parse(raw) as PendingRequest[]) : [];
+    // The fetch that would have answered these died with the render that
+    // started it, so nothing is coming: a restored request is the person's
+    // words back in their hands — retry it or take it back into the box — and
+    // never a spinner that cannot stop.
+    return rows.map((r) => ({
+      ...r,
+      error: r.error ?? "the page reloaded before the answer came back",
+    }));
+  } catch {
+    return [];
+  }
+}
+function writeRequests(pathKey: string, rows: PendingRequest[]) {
+  try {
+    if (rows.length) {
+      sessionStorage.setItem(REQUESTS_KEY + pathKey, JSON.stringify(rows));
+    } else {
+      sessionStorage.removeItem(REQUESTS_KEY + pathKey);
+    }
+  } catch {
+    // Private mode or a blocked store: nothing to do but keep going.
+  }
+}
+
 interface DepLine {
   id: string;
   d: string; // svg path
@@ -150,7 +180,20 @@ export default function BoardView() {
   }
 
   // ---- bottom-bar change requests (one Claude conversation per board) ----
-  const [requests, setRequests] = useState<PendingRequest[]>([]);
+  // Sent, not answered yet. Stored like the draft, and for the same reason: a
+  // remount must not swallow a request somebody is waiting on — silently
+  // dropping it is what "it was processing and then it just disappeared" is.
+  const [requests, setRequestsState] = useState<PendingRequest[]>(() =>
+    readRequests(pathKey)
+  );
+  const setRequests = (fn: (r: PendingRequest[]) => PendingRequest[]) =>
+    setRequestsState((r) => {
+      const next = fn(r);
+      writeRequests(pathKey, next);
+      return next;
+    });
+  // Per board, like the draft.
+  useEffect(() => setRequestsState(readRequests(pathKey)), [pathKey]);
   // The draft outlives the input, per board: a remount — a reload, a dev-server
   // restart, navigating away and back — must never eat what someone was
   // halfway through typing. It clears only when the request is actually sent.
