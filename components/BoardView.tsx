@@ -23,6 +23,7 @@ import {
   fileBlockees,
   fileClaims,
   isTicketDone,
+  LogEntry,
   newTicket,
   satisfiesDependentsOnBoard,
   Ticket,
@@ -90,6 +91,90 @@ const DEFAULT_REJECTION =
  * can see (and edit) it on the card. */
 const withIndication = (description: string, note: string) =>
   `${description.trimEnd()}\n\nExtra indication from the human: ${note}`.trim();
+
+/**
+ * The card's agent conversation, shown on the card the person pressed.
+ *
+ * Its height is fixed, whatever the log holds: the board's cards sit in a
+ * column, so a box that grew with the log would shove everything under it
+ * around while the agent works. It opens on the newest entry — set before
+ * paint, so the top is never seen — and keeps following the newest one, unless
+ * the person has scrolled up to read, which stops the following until they
+ * come back to the bottom.
+ */
+function CardLog({ log }: { log: LogEntry[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [log.length]);
+
+  if (log.length === 0) {
+    return (
+      <div className="mt-2 text-[11px] italic text-zinc-400">
+        Nothing from the agent yet.
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={ref}
+      // Reading and scrolling the log is not a press on the card: dragging its
+      // scrollbar must not collapse it.
+      onClick={(e) => e.stopPropagation()}
+      onScroll={() => {
+        const el = ref.current;
+        if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      }}
+      className="mt-2 h-32 space-y-1 overflow-y-auto overscroll-contain text-[11px] leading-snug"
+    >
+      {log.map((e, i) => {
+        switch (e.kind) {
+          case "tool":
+            return (
+              <div key={i} className="truncate font-mono text-zinc-400">
+                {e.text}
+              </div>
+            );
+          case "user":
+            return (
+              <div
+                key={i}
+                className="whitespace-pre-wrap bg-violet-50 px-1.5 py-0.5 text-zinc-700"
+              >
+                <span className="text-violet-400">&gt; </span>
+                {e.text}
+              </div>
+            );
+          case "error":
+            // A stop the person asked for is not a failure — show it like info.
+            return e.text.startsWith("Stopped by user") ? (
+              <div key={i} className="truncate font-mono italic text-zinc-400">
+                {e.text}
+              </div>
+            ) : (
+              <div key={i} className="whitespace-pre-wrap text-red-600">
+                {e.text}
+              </div>
+            );
+          case "info":
+            return (
+              <div key={i} className="truncate font-mono italic text-zinc-400">
+                {e.text}
+              </div>
+            );
+          default:
+            return (
+              <div key={i} className="whitespace-pre-wrap text-zinc-600">
+                {e.text}
+              </div>
+            );
+        }
+      })}
+    </div>
+  );
+}
 
 /** The box a card opens for a message to its agent — the review column's ✕ and
  * the note button on a card in flight both use this one. Grows with the text up
@@ -234,8 +319,8 @@ export default function BoardView() {
   const path = useStore((s) => s.path);
   const { updateGraph, updateTicket } = useStore.getState();
 
-  // Card selection is local to the board: it only expands the card's
-  // description. Routing it through the store's selection would also open the
+  // Card selection is local to the board: it only opens the card's agent
+  // conversation. Routing it through the store's selection would also open the
   // canvas's side details panel, which has no place in board view.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const pathKey = path.join("/");
@@ -885,18 +970,9 @@ export default function BoardView() {
                     <div className="line-clamp-2 break-words text-sm font-medium text-zinc-900">
                       {t.title}
                     </div>
-                    {/* Description only on the pressed card — capped at ~6 lines
-                     * (text-xs line-height is 1rem), the rest scrolls. */}
-                    {t.id === selectedId && t.description && (
-                      <div
-                        // Reading and scrolling it is not a press on the card:
-                        // dragging its scrollbar must not collapse it.
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500"
-                      >
-                        {t.description}
-                      </div>
-                    )}
+                    {/* The pressed card shows what its agent has been doing —
+                     * not the description, which is what the person wrote. */}
+                    {t.id === selectedId && <CardLog log={t.log ?? []} />}
 
                     {col.id === "blocked" && (
                       // Every reason this card is not moving, stacked; the way
