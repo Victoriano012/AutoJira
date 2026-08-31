@@ -37,7 +37,7 @@ export interface Ticket {
    * inside it, so nothing may give a card a subgraph (enforced in the store's
    * rewriteAt, which every graph edit goes through). */
   subgraph: TicketGraph;
-  sessionId?: string; // Claude session, kept so review feedback resumes the same context
+  sessionId?: string; // Agent session, kept so review feedback resumes the same context
   /** Side chat with this ticket's main agent — the conversation resumes
    * sessionId, so the agent already knows the work it did for the ticket. */
   chat?: ChatMessage[];
@@ -298,9 +298,9 @@ export interface FileClaim {
 }
 
 /** Where a card sits on its board. The board renders these four columns and
- * `fileClaims` asks the same question to decide who is holding a file, so the
- * two can never disagree: a card holds its files exactly while the person can
- * see it in Working. */
+ * the file-contention helpers ask the same question to decide who is holding a
+ * file, so the two can never disagree: a card holds its files exactly while
+ * the person can see it in Working. */
 export type BoardColumn = "blocked" | "working" | "review" | "done";
 
 export function boardColumn(g: TicketGraph, t: Ticket, onBoard = false): BoardColumn {
@@ -311,16 +311,30 @@ export function boardColumn(g: TicketGraph, t: Ticket, onBoard = false): BoardCo
   if (t.paused) return "blocked";
   if (t.status === "running" || t.status === "error") return "working";
   // todo: dispatchable, unless a dependency or another card's file says no.
-  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
-  if (!dependenciesOf(g, t.id).every(satisfies)) return "blocked";
+  if (unmetDependencies(g, t.id, onBoard).length > 0) return "blocked";
   return fileBlockedBy(g, t.id, onBoard) ? "blocked" : "working";
 }
 
-export function fileClaims(
+/** The dependencies of `ticketId` that are not satisfied yet. Asked before
+ * files everywhere the two could both answer, so one card is never told two
+ * reasons for standing still (see `notReadyReason`, `fileClaims`). */
+export function unmetDependencies(
   g: TicketGraph,
   ticketId: string,
   onBoard = false
-): FileClaim[] {
+): Ticket[] {
+  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
+  return dependenciesOf(g, ticketId).filter((d) => !satisfies(d));
+}
+
+/**
+ * Which cards a ticket would collide with if its agent started right now.
+ *
+ * The physical question, and the one to ask wherever starting the agent is the
+ * next thing that happens: two agents in one file is a corrupted working tree
+ * whatever else the ticket may also be waiting for.
+ */
+function fileHolders(g: TicketGraph, ticketId: string, onBoard: boolean): FileClaim[] {
   const i = g.tickets.findIndex((t) => t.id === ticketId);
   if (i < 0) return [];
   const me = g.tickets[i];
@@ -348,18 +362,44 @@ export function fileClaims(
   return out;
 }
 
-/** The first thing in this ticket's way, or null — the readiness predicate. */
+/**
+ * Why this ticket is waiting on someone else's file — what a card shows, and
+ * nothing when a dependency is already the answer.
+ *
+ * A ticket held up by a dependency is not held up by a file: it was not going
+ * to start anyway, and the file may well be free by the time its turn comes.
+ * Saying both would be telling one card two reasons for standing still, and it
+ * would put a line on the holder for a waiter that is not really waiting on it
+ * — `fileBlockees` reads this, so both sides of the pair drop the file
+ * together. `notReadyReason` puts dependencies first for the same reason.
+ */
+export function fileClaims(
+  g: TicketGraph,
+  ticketId: string,
+  onBoard = false
+): FileClaim[] {
+  if (unmetDependencies(g, ticketId, onBoard).length > 0) return [];
+  return fileHolders(g, ticketId, onBoard);
+}
+
+/** The first thing in this ticket's way, or null — the readiness predicate.
+ * The physical answer: the callers that gate a run ask this, and the ones that
+ * explain a card ask `fileClaims`. They agree wherever it matters, because
+ * everything that gates a run has already refused a ticket whose dependencies
+ * are unmet (`notReadyReason`, `boardColumn`, `hasRunnableWork`). */
 export function fileBlockedBy(
   g: TicketGraph,
   ticketId: string,
   onBoard = false
 ): { file: string; by: Ticket } | null {
-  return fileClaims(g, ticketId, onBoard)[0] ?? null;
+  return fileHolders(g, ticketId, onBoard)[0] ?? null;
 }
 
 /** The mirror of `fileClaims`: the tickets waiting on files this one holds —
  * what a working card shows to say why the rest of the board is waiting. A
- * file nobody else wants is not listed: holding it costs no one anything. */
+ * file nobody else wants is not listed: holding it costs no one anything, and
+ * neither does one whose only waiter is stuck on a dependency, since asking
+ * `fileClaims` is what decides that on both sides. */
 export function fileBlockees(
   g: TicketGraph,
   ticketId: string,
@@ -416,8 +456,7 @@ export function notReadyReason(
   // so a card they stopped stays stopped across a server restart.
   if (t.paused) return "the person paused it";
   if (facts.stopped?.(t.id)) return "the person stopped it";
-  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
-  const unmet = dependenciesOf(g, t.id).filter((d) => !satisfies(d));
+  const unmet = unmetDependencies(g, t.id, onBoard);
   if (unmet.length > 0)
     return `waiting on ${unmet.map((d) => `“${d.title}”`).join(", ")}`;
   // Never two agents in one file: a ticket whose files another unfinished

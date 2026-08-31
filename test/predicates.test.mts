@@ -4,6 +4,7 @@ import {
   boardColumn,
   fileBlockedBy,
   fileBlockees,
+  fileClaims,
   isTicketDone,
   notReadyReason,
   satisfiesDependents,
@@ -227,4 +228,77 @@ test("the scheduler's refusals and the board's Working column line up", () => {
   // A board card in review does not gate the rest of the board, so "held" runs.
   assert.deepEqual(ready.map((x) => x.id), ["held", "go"]);
   assert.deepEqual(stuckCards(graph), []);
+});
+
+test("a card waiting on a dependency is not also waiting on a file", () => {
+  // "gate" is unfinished, so "waits" cannot start whatever the files say — and
+  // the file may well be free by its turn. One reason, on both cards: the
+  // holder must not claim a waiter that is not actually waiting on it.
+  const graph = g(
+    [
+      t({ id: "gate", type: "human_review" }),
+      t({ id: "holds", type: "human_review", status: "running", files: ["a.ts"] }),
+      t({ id: "waits", type: "human_review", files: ["a.ts"] }),
+    ],
+    [["gate", "waits"]]
+  );
+  const waits = graph.tickets[2];
+  assert.deepEqual(fileClaims(graph, "waits", true), []);
+  assert.deepEqual(fileBlockees(graph, "holds", true), []);
+  // The physical answer is still yes, and has to be: anything that would start
+  // the agent now must not forget that another agent is in that file.
+  assert.equal(fileBlockedBy(graph, "waits", true)?.by.id, "holds");
+  // Blocked either way, and for the dependency, which is the truth.
+  assert.equal(boardColumn(graph, waits, true), "blocked");
+  assert.match(notReadyReason(graph, waits, true)!, /waiting on “gate”/);
+});
+
+test("the file reason comes back the moment the dependency is met", () => {
+  const graph = g(
+    [
+      t({ id: "gate", type: "human_review", status: "done" }),
+      t({ id: "holds", type: "human_review", status: "running", files: ["a.ts"] }),
+      t({ id: "waits", type: "human_review", files: ["a.ts"] }),
+    ],
+    [["gate", "waits"]]
+  );
+  assert.equal(fileBlockedBy(graph, "waits", true)?.by.id, "holds");
+  assert.deepEqual(
+    fileBlockees(graph, "holds", true).map((b) => b.who.id),
+    ["waits"]
+  );
+  assert.match(notReadyReason(graph, graph.tickets[2], true)!, /waiting for a\.ts/);
+});
+
+test("a holder keeps the waiters who really are waiting on its file", () => {
+  // Two waiters, one of them stuck behind a dependency: the holder lists the
+  // other one only, and the line does not disappear with it.
+  const graph = g(
+    [
+      t({ id: "gate", type: "human_review" }),
+      t({ id: "holds", type: "human_review", status: "running", files: ["a.ts"] }),
+      t({ id: "blocked", type: "human_review", files: ["a.ts"] }),
+      t({ id: "free", type: "human_review", files: ["a.ts"] }),
+    ],
+    [["gate", "blocked"]]
+  );
+  assert.deepEqual(
+    fileBlockees(graph, "holds", true).map((b) => b.who.id),
+    ["free"]
+  );
+});
+
+test("dependencies still win when the file holder is the dependency", () => {
+  // The same ticket on both sides: nothing may recurse forever, and the card
+  // is told about the dependency, not the file.
+  const graph = g(
+    [
+      t({ id: "first", type: "human_review", status: "running", files: ["a.ts"] }),
+      t({ id: "second", type: "human_review", files: ["a.ts"] }),
+    ],
+    [["first", "second"]]
+  );
+  assert.deepEqual(fileClaims(graph, "second", true), []);
+  assert.deepEqual(fileBlockees(graph, "first", true), []);
+  assert.match(notReadyReason(graph, graph.tickets[1], true)!, /waiting on “first”/);
 });
