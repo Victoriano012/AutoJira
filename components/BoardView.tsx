@@ -561,7 +561,10 @@ export default function BoardView() {
         {COLUMNS.map((col) => (
           <div
             key={col.id}
-            className={`flex min-h-0 flex-1 flex-col rounded-xl border ${col.tint}`}
+            // min-w-0: without it a flex child never shrinks below its content,
+            // so one long title would widen its column and squeeze the others.
+            // The four columns are always a quarter of the board each.
+            className={`flex min-h-0 w-0 min-w-0 flex-1 flex-col rounded-xl border ${col.tint}`}
           >
             <div
               className={`flex items-center justify-between px-3 pb-1 pt-2.5 text-xs font-semibold uppercase tracking-wide ${col.header}`}
@@ -598,7 +601,7 @@ export default function BoardView() {
                     className="flex min-w-0 items-center gap-1 text-zinc-400"
                   >
                     <HandIcon />
-                    <span className="shrink-0">{b.file}</span>
+                    <span className="truncate">{b.file}</span>
                     <span className="truncate opacity-80">{b.who.title}</span>
                   </div>
                 ));
@@ -621,7 +624,7 @@ export default function BoardView() {
                           : "border-zinc-200"
                     }`}
                   >
-                    <div className="line-clamp-2 text-sm font-medium text-zinc-900">
+                    <div className="line-clamp-2 break-words text-sm font-medium text-zinc-900">
                       {t.title}
                     </div>
                     {/* Description only on the pressed card — capped at ~6 lines
@@ -645,14 +648,18 @@ export default function BoardView() {
                           {t.paused && (
                             <div>{t.status === "running" ? "Stopping…" : "Paused"}</div>
                           )}
-                          {!isReady(t) && <div>⛔ {unmetTitles(t)}</div>}
+                          {!isReady(t) && (
+                            <div className="truncate" title={unmetTitles(t)}>
+                              ⛔ {unmetTitles(t)}
+                            </div>
+                          )}
                           {claims.map((c) => (
                             <div
                               key={c.by.id}
                               title={`Waiting for ${c.files.join(", ")}, held by ${c.by.title}`}
                               className="flex min-w-0 items-center gap-1"
                             >
-                              <span className="shrink-0">⛔ {c.file}</span>
+                              <span className="truncate">⛔ {c.file}</span>
                               <span className="truncate opacity-80">{c.by.title}</span>
                             </div>
                           ))}
