@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         runs.stopTicket(dir, path, id);
         break;
       case "stopGraph":
-        runs.stopGraph(dir, path);
+        runs.stopGraph(dir, path, true);
         break;
       case "settleZombies":
         runs.settleZombies(dir, path);

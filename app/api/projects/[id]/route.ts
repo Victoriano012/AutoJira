@@ -1,6 +1,6 @@
 import { eraseProject, hideProject } from "@/lib/projects-fs";
 import { forget, getProject, setProject } from "@/lib/server/project-store";
-import { ensureLoaded, ownsTicket } from "@/lib/server/runs";
+import { autoRunBoards, ensureLoaded, ownsTicket } from "@/lib/server/runs";
 import { applyRunEdits, mergeRunState, RunEdit } from "@/lib/run-state";
 import { Project } from "@/lib/types";
 
@@ -39,6 +39,9 @@ export async function PUT(req: Request, ctx: Ctx) {
     (path, ticketId) => ownsTicket(dir, path, ticketId)
   );
   setProject(dir, merged);
+  // The autosave is how new cards reach the server. A card that can run should
+  // be running, not queued behind the next time somebody presses run.
+  autoRunBoards(dir);
   return Response.json({ ok: true });
 }
 

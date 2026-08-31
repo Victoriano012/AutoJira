@@ -302,11 +302,11 @@ export function blockingFiles(g: TicketGraph, ticketId: string): string[] {
 }
 
 /** True if running the graph now could make progress somewhere inside.
- * File-blocked tickets do not count: the scheduler will not dispatch them, and
- * a parent that thought otherwise would re-enter this graph forever. */
+ * Paused and file-blocked tickets do not count: the scheduler will not dispatch
+ * them, and a parent that thought otherwise would re-enter this graph forever. */
 export function hasRunnableWork(g: TicketGraph): boolean {
   return g.tickets.some((t) => {
-    if (isTicketDone(t)) return false;
+    if (isTicketDone(t) || t.paused) return false;
     if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
     if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
     return t.status === "todo" && !fileBlockedBy(g, t.id);

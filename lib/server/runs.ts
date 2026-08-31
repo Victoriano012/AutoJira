@@ -10,6 +10,7 @@ import {
   satisfiesDependents,
   Ticket,
   ticketAtPath,
+  TicketGraph,
 } from "../types";
 import { streamAgent } from "./agent";
 import * as store from "./project-store";
@@ -328,13 +329,16 @@ export async function rejectTicket(
   // A fixed non-blocking review satisfies dependents again — restart the
   // scheduler if this graph's run is still active.
   if (registry.active.has(graphScope(dir, path))) void runGraph(dir, path, true);
+  else autoRun(dir, path);
 }
 
 /** Approve a ticket in review (or force-complete any ticket). */
 export function approveTicket(dir: string, path: string[], ticketId: string): void {
   store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "done" }));
-  // If a graph run was waiting on this review, let it continue.
+  // If a graph run was waiting on this review, let it continue. Approving also
+  // releases the ticket's files, which may be all a card on this board needed.
   if (registry.active.has(graphScope(dir, path))) void runGraph(dir, path, true);
+  else autoRun(dir, path);
 }
 
 /** Run a ticket: leaf tickets go to the agent, tickets with a subgraph run the subgraph. */
@@ -383,6 +387,60 @@ export async function runTicket(
   }
 }
 
+/** The tickets in this graph an agent could be started on right now. The
+ * scheduler dispatches exactly these, and `autoRun` asks the same question to
+ * decide whether starting a scheduler is worth it — one definition, so the two
+ * can never disagree and spin. */
+function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
+  return g.tickets.filter((t) => {
+    if (isTicketDone(t)) return false;
+    // Stopped by the person: `paused` is the persisted version of the same
+    // thing, so a card they stopped stays stopped across a server restart.
+    if (t.paused) return false;
+    if (registry.userStopped.has(ticketScope(dir, path, t.id))) return false;
+    if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
+    // Never two agents in one file: a ticket whose files another unfinished
+    // ticket is touching waits, without any edge between them.
+    if (fileBlockedBy(g, t.id)) return false;
+    // Parents are ready only while something inside can actually progress.
+    if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
+    return t.status === "todo";
+  });
+}
+
+/**
+ * A board runs itself: the moment a card can start it gets its agent, rather
+ * than sitting queued until somebody presses run. Cheap and safe to call after
+ * anything that could have unblocked a card — a new card from the request bar,
+ * an approval, a finished run releasing a file — because it starts a scheduler
+ * only when there is a card it could actually dispatch, and `runGraph` is a
+ * no-op while a loop is already draining the graph.
+ *
+ * Boards only. The graph view is a plan the person runs deliberately; a board
+ * is a request they already made, so waiting there is just latency.
+ */
+export function autoRun(dir: string, path: string[]): void {
+  if (!isBoard(dir, path)) return;
+  if (registry.loops.has(graphScope(dir, path))) return;
+  const project = store.getProject(dir);
+  const g = project && graphAtPath(project.graph, path);
+  if (!g || readyTickets(dir, path, g).length === 0) return;
+  // resume: never lift the person's stop just because the board moved on.
+  void runGraph(dir, path, true);
+}
+
+/** Every board in the project gets the same treatment, for the paths that
+ * change a board from outside a run — the browser's autosave adding cards. */
+export function autoRunBoards(dir: string, path: string[] = []): void {
+  const project = store.getProject(dir);
+  const g = project && graphAtPath(project.graph, path);
+  for (const t of g?.tickets ?? []) {
+    if (t.subgraph.tickets.length === 0) continue;
+    if (t.type === "human_review") autoRun(dir, [...path, t.id]);
+    else autoRunBoards(dir, [...path, t.id]);
+  }
+}
+
 /**
  * Run every ticket in the graph at `path`, respecting dependency edges.
  * All ready tickets run in parallel, each in its own agent session; whenever
@@ -418,17 +476,7 @@ export async function runGraph(
         const project = store.getProject(dir);
         const g = project && graphAtPath(project.graph, path);
         if (!g) break;
-        const ready = g.tickets.filter((t) => {
-          if (inFlight.has(t.id) || isTicketDone(t)) return false;
-          if (registry.userStopped.has(ticketScope(dir, path, t.id))) return false;
-          if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
-          // Never two agents in one file: a ticket whose files another
-          // unfinished ticket is touching waits, without any edge between them.
-          if (fileBlockedBy(g, t.id)) return false;
-          // Parents are ready only while something inside can actually progress.
-          if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
-          return t.status === "todo";
-        });
+        const ready = readyTickets(dir, path, g).filter((t) => !inFlight.has(t.id));
         for (const t of ready) {
           inFlight.set(
             t.id,
@@ -552,11 +600,16 @@ export function stopTicket(dir: string, path: string[], ticketId: string): void 
   notifyRuns(dir);
 }
 
-export function stopGraph(dir: string, path: string[]): void {
+/** `byUser` is the person pressing Stop: its tickets are marked user-stopped so
+ * nothing (a board's own auto-run included) starts them again until the person
+ * presses run. An internal stop — rejecting work so it can be redone — leaves
+ * them free to run. */
+export function stopGraph(dir: string, path: string[], byUser = false): void {
   registry.active.delete(graphScope(dir, path));
   const project = store.getProject(dir);
   const g = project && graphAtPath(project.graph, path);
   for (const t of g?.tickets ?? []) {
+    if (byUser && !isTicketDone(t)) registry.userStopped.add(ticketScope(dir, path, t.id));
     registry.controllers.get(ticketScope(dir, path, t.id))?.abort();
     if (t.subgraph.tickets.length > 0) stopGraph(dir, [...path, t.id]);
     settleZombie(dir, path, t.id);
