@@ -119,9 +119,9 @@ export default function TicketDetails({
           {ticket.status !== "done" ? (
             <button
               className="rounded-full border border-emerald-600 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-600 hover:text-white"
-              onClick={() =>
-                updateTicket(path, ticket.id, (t) => ({ ...t, status: "done" }))
-              }
+              // Not a plain status write: a run parked on this human gate
+              // resumes only through approveTicket.
+              onClick={() => approveTicket(path, ticket.id)}
             >
               ✓ Mark done
             </button>
@@ -200,22 +200,6 @@ export default function TicketDetails({
               {isTicketDone(d) ? "✓" : "○"} {d.title}
             </div>
           ))}
-        </div>
-      )}
-
-      {ticket.status === "review" && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <p className="text-xs text-amber-700/80">
-            {ticket.blocking === false
-              ? "Non-blocking: dependent tickets continue on a separate git branch while you review. Ask the AI for changes below, or approve."
-              : "Test the result, ask the AI for changes below, or approve to unblock dependent tickets."}
-          </p>
-          <button
-            className="mt-2 rounded-lg px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-400 text-white font-medium"
-            onClick={() => approveTicket(path, ticket.id)}
-          >
-            ✔ Approve
-          </button>
         </div>
       )}
     </>
