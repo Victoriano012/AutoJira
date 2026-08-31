@@ -74,7 +74,8 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n");
 
-  try {
+  // One pass at the planner. Throws if the agent process dies under it.
+  const ask = async () => {
     let newSessionId: string | undefined;
     for await (const msg of query({
       prompt,
@@ -97,8 +98,38 @@ export async function POST(req: Request) {
         );
       }
     }
+    return Response.json({ error: "No result from agent" }, { status: 502 });
+  };
+
+  try {
+    return await ask();
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    // The planner process can be killed out from under us (SIGTERM/SIGKILL from
+    // the OS, a hot reload, the machine reclaiming memory). Nothing was written
+    // and the prompt is unchanged, so just ask once more before giving up.
+    if (wasInterrupted(err)) {
+      try {
+        return await ask();
+      } catch (err2) {
+        return Response.json({ error: humanError(err2) }, { status: 500 });
+      }
+    }
+    return Response.json({ error: humanError(err) }, { status: 500 });
   }
-  return Response.json({ error: "No result from agent" }, { status: 502 });
+}
+
+/** The planner was killed rather than failing on its own: signal exit codes
+ * (143 SIGTERM, 137 SIGKILL, 130 SIGINT) and abort/close errors all mean the
+ * work never happened, so it is safe to repeat. */
+function wasInterrupted(err: unknown): boolean {
+  return /exited with code (143|137|130)\b|SIGTERM|SIGKILL|abort|closed|ECONNRESET/i.test(
+    String(err)
+  );
+}
+
+/** What the person reads. "process exited with code 143" tells them nothing. */
+function humanError(err: unknown): string {
+  if (wasInterrupted(err))
+    return "The request was interrupted before it finished — send it again.";
+  return String(err).replace(/^Error:\s*/, "");
 }
