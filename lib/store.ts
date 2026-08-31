@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   emptyGraph,
+  graphAtPath,
   GraphEdge,
   LogEntry,
   Project,
@@ -91,8 +92,25 @@ export const useStore = create<AppState>()(
       selectedId: null,
       chatOpen: false,
 
+      // Re-opening the project the browser is already in — a reload, or a dev
+      // HMR update that re-creates this module — must not cost the person the
+      // subgraph they were standing in. Keep `path` when it still resolves in
+      // the graph the server just handed us; only a genuinely gone ticket
+      // sends them back to the root.
       openProject: (id, project) =>
-        set({ projectId: id, projectLoaded: true, project, path: [], selectedId: null }),
+        set((s) => {
+          const g = s.projectId === id ? graphAtPath(project.graph, s.path) : null;
+          return {
+            projectId: id,
+            projectLoaded: true,
+            project,
+            path: g ? s.path : [],
+            selectedId:
+              g && s.selectedId && g.tickets.some((t) => t.id === s.selectedId)
+                ? s.selectedId
+                : null,
+          };
+        }),
       closeProject: () => set({ projectId: null, projectLoaded: false, path: [], selectedId: null }),
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
       setPath: (path) => set({ path, selectedId: null }),
@@ -179,8 +197,14 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "autojira-project",
-      // Project data lives on the server; only remember which project is open.
-      partialize: (s) => ({ projectId: s.projectId }),
+      // Project data lives on the server; only remember which project is open
+      // and where inside it the person was — `openProject` re-validates that
+      // path against the graph it fetches before restoring it.
+      partialize: (s) => ({
+        projectId: s.projectId,
+        path: s.path,
+        selectedId: s.selectedId,
+      }),
     }
   )
 );
