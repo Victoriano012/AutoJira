@@ -186,7 +186,6 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
         {running ? (
           <span className="flex items-center gap-1.5">
-            <Spinner />
             {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
             <button
               onClick={(e) => {
@@ -196,6 +195,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
               title="Stop"
               className="h-3 w-3 rounded-[3px] bg-red-600 hover:bg-red-500"
             />
+            <Spinner />
           </span>
         ) : ticket.status === "todo" ? (
           <button
