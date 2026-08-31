@@ -358,6 +358,18 @@ export default function BoardView() {
     }
   }
 
+  // The board's own ticket — the human-review ticket this window belongs to.
+  const parentPath = path.slice(0, -1);
+  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
+
+  /** Put this panel back in play — the footer's Reopen, and what a message
+   * does on its own: saying something here means there is work left, so a
+   * panel the person had closed cannot stay closed. */
+  function reopenPanel() {
+    if (parent?.status !== "done") return; // already open: nothing to write
+    updateTicket(parentPath, parent.id, (t) => ({ ...t, status: "todo" }));
+  }
+
   // ---- bottom-bar change requests (one agent conversation per board) ----
   // Sent, not answered yet. Stored like the draft, and for the same reason: a
   // remount must not swallow a request somebody is waiting on — silently
@@ -392,6 +404,7 @@ export default function BoardView() {
   function submitRequest() {
     const text = draft.trim();
     if (!text) return;
+    reopenPanel();
     setDraft("");
     const id = crypto.randomUUID();
     setRequests((r) => [...r, { id, text }]);
@@ -627,18 +640,6 @@ export default function BoardView() {
   function resume(ticketId: string) {
     updateTicket(path, ticketId, (t) => ({ ...t, paused: false }));
     void runTicket(path, ticketId);
-  }
-
-  // The board's own ticket — the human-review ticket this window belongs to.
-  const parentPath = path.slice(0, -1);
-  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
-
-  /** Put this panel back in play — the footer's Reopen, and what a message
-   * does on its own: saying something here means there is work left, so a
-   * panel the person had closed cannot stay closed. */
-  function reopenPanel() {
-    if (parent?.status !== "done") return; // already open: nothing to write
-    updateTicket(parentPath, parent.id, (t) => ({ ...t, status: "todo" }));
   }
 
   /**
@@ -883,6 +884,11 @@ export default function BoardView() {
         `BoardView: ${graph.tickets.length} cards, ${placed} placed in columns`
       );
   }
+  // "All good" says nothing is left, so it is only true when the board is
+  // empty of work: any card outside Done is work, and the columns already say
+  // which those are.
+  const unfinished = graph.tickets.length - byColumn.get("done")!.length;
+
   const doneKey = byColumn
     .get("done")!
     .map((t) => t.id)
@@ -1189,8 +1195,13 @@ export default function BoardView() {
               <div className="shrink-0 px-2 pb-2">
                 {parent.status !== "done" ? (
                   <button
-                    className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500"
-                    title="Mark this human-review ticket complete — no issues remaining"
+                    disabled={unfinished > 0}
+                    className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-100"
+                    title={
+                      unfinished > 0
+                        ? `${unfinished} card${unfinished > 1 ? "s" : ""} still outside Done`
+                        : "Mark this human-review ticket complete — no issues remaining"
+                    }
                     // Not a plain status write: a run parked on this human gate
                     // resumes only through approveTicket. Nothing is left to do
                     // here afterwards, so the board closes behind the person —
