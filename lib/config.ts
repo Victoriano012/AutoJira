@@ -24,7 +24,7 @@ export function writeConfig(config: AppConfig) {
   fs.writeFileSync(CONFIG, JSON.stringify(config, null, 2));
 }
 
-/** `{ model }` — the configured model, or `DEFAULT_MODEL`. Spread into query() options. */
-export function modelOption(): { model: string } {
-  return { model: readConfig().model || DEFAULT_MODEL };
+/** The configured model, shared by every agent entry point. */
+export function selectedModel(): string {
+  return readConfig().model || DEFAULT_MODEL;
 }

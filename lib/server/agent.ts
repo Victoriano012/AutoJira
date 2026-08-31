@@ -2,16 +2,23 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { resumableSession, tagSession } from "../agent-session";
 import { AttachmentPayload, writeAttachments } from "../attachments";
-import { modelOption } from "../config";
+import { selectedModel } from "../config";
+import { providerForModel } from "../models";
+import { streamCodexAgent } from "./codex";
 
-/** One agent turn, as the runner consumes it. Same shape the browser used to
- * receive as NDJSON from /api/agent — the run just no longer crosses the wire. */
+/** One agent turn, as the ticket runner consumes it. */
 export type AgentEvent =
   | { type: "init"; sessionId: string }
   | { type: "text"; text: string }
   | { type: "tool"; text: string }
-  | { type: "result"; ok: boolean; text: string }
+  | {
+      type: "result";
+      ok: boolean;
+      text: string;
+      structuredOutput?: unknown;
+    }
   | { type: "error"; message: string };
 
 export interface AgentRequest {
@@ -20,6 +27,19 @@ export interface AgentRequest {
   sessionId?: string;
   attachments?: AttachmentPayload[];
   signal: AbortSignal;
+  /** Capture once at the start when prompt construction also depends on it. */
+  model?: string;
+  /** Ticket work and side chat may edit; planners remain read-only. */
+  writeAccess?: boolean;
+  maxTurns?: number;
+  outputSchema?: Record<string, unknown>;
+}
+
+export interface AgentResult {
+  ok: boolean;
+  text: string;
+  sessionId?: string;
+  structuredOutput?: unknown;
 }
 
 function describeTool(name: string, input: unknown): string {
@@ -33,46 +53,100 @@ function describeTool(name: string, input: unknown): string {
   return detail ? `${name}: ${String(detail).slice(0, 200)}` : name;
 }
 
-/** Run one agent session, yielding its events until it finishes or is aborted. */
-export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent> {
-  const cwd =
-    req.workspaceDir?.trim() ||
+function workspaceDir(requested?: string): string {
+  return (
+    requested?.trim() ||
     process.env.AUTOJIRA_WORKSPACE ||
-    path.join(os.tmpdir(), "autojira-workspace");
+    path.join(os.tmpdir(), "autojira-workspace")
+  );
+}
+
+function promptWithAttachments(
+  cwd: string,
+  prompt: string,
+  attachments?: AttachmentPayload[]
+): string {
+  if (!attachments?.length) return prompt;
+  const files = writeAttachments(
+    path.join(cwd, ".autojira", "attachments"),
+    attachments
+  );
+  return (
+    `Reference files attached to this ticket or inherited from parent tickets (read them when relevant):\n` +
+    files.map((file) => `- ${file}`).join("\n") +
+    `\n\n${prompt}`
+  );
+}
+
+/** Run one agent session through the CLI that owns the selected model. */
+export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent> {
+  const cwd = workspaceDir(req.workspaceDir);
   fs.mkdirSync(cwd, { recursive: true });
+  const model = req.model ?? selectedModel();
+  const prompt = promptWithAttachments(cwd, req.prompt, req.attachments);
+  const prepared = { ...req, workspaceDir: cwd, prompt, model };
 
-  let fullPrompt = req.prompt;
-  if (req.attachments?.length) {
-    const files = writeAttachments(
-      path.join(cwd, ".autojira", "attachments"),
-      req.attachments
-    );
-    fullPrompt =
-      `Reference files attached to this ticket or inherited from parent tickets (read them when relevant):\n` +
-      files.map((f) => `- ${f}`).join("\n") +
-      `\n\n${req.prompt}`;
+  if (providerForModel(model) === "codex") {
+    yield* streamCodexAgent(prepared);
+    return;
   }
+  yield* streamClaudeAgent(prepared);
+}
 
-  // Aborting this kills the agent process (after the SDK's own short grace
-  // period); it is the backstop for a stop the session will not answer.
+/** Convenience wrapper for request/response routes. */
+export async function runAgent(req: AgentRequest): Promise<AgentResult> {
+  let result: AgentResult = {
+    ok: false,
+    text: "No result from agent",
+    sessionId: req.sessionId,
+  };
+  for await (const event of streamAgent(req)) {
+    if (event.type === "init") result.sessionId = event.sessionId;
+    else if (event.type === "result") {
+      result = {
+        ok: event.ok,
+        text: event.text,
+        sessionId: result.sessionId,
+        structuredOutput: event.structuredOutput,
+      };
+    } else if (event.type === "error") {
+      result = { ok: false, text: event.message, sessionId: result.sessionId };
+    }
+  }
+  return result;
+}
+
+async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent> {
+  const model = req.model!;
+  const resume = resumableSession(req.sessionId, model);
   const kill = new AbortController();
   const q = query({
-    prompt: fullPrompt,
+    prompt: req.prompt,
     options: {
-      cwd,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      maxTurns: 150,
+      cwd: req.workspaceDir,
+      model,
+      maxTurns: req.maxTurns ?? 150,
       abortController: kill,
-      ...modelOption(),
-      ...(req.sessionId ? { resume: req.sessionId } : {}),
+      ...(req.writeAccess
+        ? {
+            permissionMode: "bypassPermissions" as const,
+            allowDangerouslySkipPermissions: true,
+          }
+        : {}),
+      ...(resume ? { resume: resume.raw } : {}),
+      ...(req.outputSchema
+        ? {
+            outputFormat: {
+              type: "json_schema" as const,
+              schema: req.outputSchema,
+            },
+          }
+        : {}),
     },
   });
 
-  // Stopping is a control message to the running session, so it can only be
-  // delivered once the session is up: sent before that it resolves happily and
-  // does nothing, and the agent runs on for as long as its work takes (the
-  // "I pressed stop and it kept going" bug). So the stop is held until init.
+  // Claude's interrupt is only effective after init, so hold an early stop
+  // until the session is live and keep process abort as the backstop.
   let live = false;
   let sent = false;
   const interrupt = () => {
@@ -82,9 +156,6 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
   };
   const onAbort = () => {
     interrupt();
-    // If the session will not stop on its own — a tool call that never returns,
-    // a session that never came up — end the process rather than leaving the
-    // person watching a ticket they already stopped.
     setTimeout(() => kill.abort(), 8000).unref?.();
   };
   if (req.signal.aborted) onAbort();
@@ -95,7 +166,10 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
       if (msg.type === "system" && msg.subtype === "init") {
         live = true;
         if (req.signal.aborted) interrupt();
-        yield { type: "init", sessionId: msg.session_id };
+        yield {
+          type: "init",
+          sessionId: tagSession("claude", msg.session_id),
+        };
       } else if (msg.type === "assistant") {
         for (const block of msg.message.content) {
           if (block.type === "text" && block.text.trim()) {
@@ -106,8 +180,17 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
         }
       } else if (msg.type === "result") {
         yield msg.subtype === "success"
-          ? { type: "result", ok: !msg.is_error, text: msg.result }
-          : { type: "result", ok: false, text: `Agent stopped: ${msg.subtype}` };
+          ? {
+              type: "result",
+              ok: !msg.is_error,
+              text: msg.result,
+              structuredOutput: msg.structured_output,
+            }
+          : {
+              type: "result",
+              ok: false,
+              text: `Agent stopped: ${msg.subtype}`,
+            };
       }
     }
   } catch (err) {

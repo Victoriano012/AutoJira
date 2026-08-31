@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
-import { DEFAULT_MODEL } from "@/lib/models";
+import {
+  DEFAULT_MODEL,
+  MODEL_CHOICES,
+  type ModelProvider,
+} from "@/lib/models";
 
-const MODELS = [
-  { value: DEFAULT_MODEL, label: "Fable 5 (default)" },
-  { value: "claude-opus-5", label: "Opus 5" },
-  { value: "claude-sonnet-5", label: "Sonnet 5" },
-  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+const PROVIDERS: { value: ModelProvider; label: string }[] = [
+  { value: "claude", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
 ];
 
 /** App-wide settings. Add future settings as more labeled rows below. */
@@ -65,10 +67,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               disabled={!loaded}
               onChange={(e) => setModel(e.target.value)}
             >
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
+              {PROVIDERS.map((provider) => (
+                <optgroup key={provider.value} label={provider.label}>
+                  {MODEL_CHOICES.filter(
+                    (modelChoice) => modelChoice.provider === provider.value
+                  ).map((modelChoice) => (
+                    <option key={modelChoice.value} value={modelChoice.value}>
+                      {modelChoice.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>

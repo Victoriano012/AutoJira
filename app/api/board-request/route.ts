@@ -1,4 +1,6 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { resumableSession } from "@/lib/agent-session";
+import { selectedModel } from "@/lib/config";
+import { runAgent } from "@/lib/server/agent";
 import os from "os";
 
 export const maxDuration = 300;
@@ -43,9 +45,11 @@ export async function POST(req: Request) {
     /** Inherited context: project + ancestor tickets, outermost first. */
     chain?: { title: string; description: string }[];
   };
+  const model = selectedModel();
+  const activeSession = resumableSession(sessionId, model)?.stored;
 
   const prompt = [
-    sessionId
+    activeSession
       ? `Another request from the human on the same kanban board.`
       : [
           `You are the planner behind a kanban board where AI coding agents execute tickets. The human posts change requests; you break each request into tickets for the agents.`,
@@ -74,31 +78,29 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n");
 
-  // One pass at the planner. Throws if the agent process dies under it.
+  // One pass at the planner. Interrupted subprocesses are surfaced to the
+  // retry wrapper below; normal model failures remain a readable response.
   const ask = async () => {
-    let newSessionId: string | undefined;
-    for await (const msg of query({
+    const result = await runAgent({
       prompt,
-      options: {
-        cwd: os.tmpdir(),
-        maxTurns: 4,
-        outputFormat: { type: "json_schema", schema: REQUEST_SCHEMA },
-        ...(sessionId ? { resume: sessionId } : {}),
-      },
-    })) {
-      if (msg.type === "system" && msg.subtype === "init") {
-        newSessionId = msg.session_id;
-      } else if (msg.type === "result") {
-        if (msg.subtype === "success" && msg.structured_output) {
-          return Response.json({ ...msg.structured_output, sessionId: newSessionId });
-        }
-        return Response.json(
-          { error: `Ticket generation failed: ${msg.subtype}` },
-          { status: 502 }
-        );
-      }
+      workspaceDir: os.tmpdir(),
+      sessionId: activeSession,
+      signal: req.signal,
+      model,
+      maxTurns: 4,
+      outputSchema: REQUEST_SCHEMA,
+    });
+    if (result.ok && result.structuredOutput) {
+      return Response.json({
+        ...(result.structuredOutput as object),
+        sessionId: result.sessionId,
+      });
     }
-    return Response.json({ error: "No result from agent" }, { status: 502 });
+    if (wasInterrupted(result.text)) throw new Error(result.text);
+    return Response.json(
+      { error: `Ticket generation failed: ${result.text}` },
+      { status: 502 }
+    );
   };
 
   try {

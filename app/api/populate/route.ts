@@ -1,14 +1,14 @@
 import { AttachmentPayload, writeAttachments } from "@/lib/attachments";
-import { modelOption } from "@/lib/config";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { selectedModel } from "@/lib/config";
+import { runAgent } from "@/lib/server/agent";
 import fs from "fs";
 import os from "os";
 import path from "path";
 
 export const maxDuration = 300;
 
-// Runs through the Agent SDK (Claude Code harness) rather than the raw API so
-// it uses the same auth as the ticket runs — including subscription (OAuth) auth.
+// Runs through the selected coding-agent CLI rather than a raw model API, so
+// it uses the same Claude Code or Codex login as ticket runs.
 const GRAPH_SCHEMA = {
   type: "object",
   properties: {
@@ -70,27 +70,22 @@ export async function POST(req: Request) {
     .join("\n");
 
   try {
-    for await (const msg of query({
+    const result = await runAgent({
       prompt,
-      options: {
-        cwd,
-        maxTurns: files.length ? 16 : 4,
-        ...modelOption(),
-        outputFormat: { type: "json_schema", schema: GRAPH_SCHEMA },
-      },
-    })) {
-      if (msg.type === "result") {
-        if (msg.subtype === "success" && msg.structured_output) {
-          return Response.json(msg.structured_output);
-        }
-        return Response.json(
-          { error: `Graph generation failed: ${msg.subtype}` },
-          { status: 502 }
-        );
-      }
+      workspaceDir: cwd,
+      signal: req.signal,
+      model: selectedModel(),
+      maxTurns: files.length ? 16 : 4,
+      outputSchema: GRAPH_SCHEMA,
+    });
+    if (result.ok && result.structuredOutput) {
+      return Response.json(result.structuredOutput);
     }
+    return Response.json(
+      { error: `Graph generation failed: ${result.text}` },
+      { status: 502 }
+    );
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }
-  return Response.json({ error: "No result from agent" }, { status: 502 });
 }
