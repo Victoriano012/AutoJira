@@ -16,12 +16,15 @@ const REQUEST_SCHEMA = {
         properties: {
           title: { type: "string" },
           description: { type: "string" },
+          // workspace-relative paths this ticket will create or modify; the
+          // board serialises tickets that share one, with no dependency
+          files: { type: "array", items: { type: "string" } },
           // indexes into this array of tickets that must complete first
           dependsOn: { type: "array", items: { type: "integer" } },
           // numbers of the existing unsolved tickets (as listed in the prompt)
           dependsOnExisting: { type: "array", items: { type: "integer" } },
         },
-        required: ["title", "description", "dependsOn", "dependsOnExisting"],
+        required: ["title", "description", "files", "dependsOn", "dependsOnExisting"],
         additionalProperties: false,
       },
     },
@@ -64,7 +67,8 @@ export async function POST(req: Request) {
     `\nRules:
 - Break the request into 1 to 6 tickets, each a self-contained unit of work an AI coding agent can do in one session.
 - Each ticket's description tells the agent exactly what to build/do.
-- dependsOn lists 0-based indexes into YOUR new tickets array that must finish first; order the array so dependencies come before dependents. dependsOnExisting lists numbers of the existing unsolved tickets above that must finish first. Only real dependencies — keep the graph as parallel as possible. No cycles.
+- files lists the workspace-relative paths each ticket will create or modify. Be specific and complete: the board uses it to keep two agents out of the same file, running such tickets one after another on its own. Never add a dependency just because two tickets touch the same file — list the file in both and the board handles it.
+- dependsOn is only for real ordering: ticket B needs what ticket A actually produces (a component A creates, a decision A makes, data A moves). It lists 0-based indexes into YOUR new tickets array that must finish first; order the array so dependencies come before dependents. dependsOnExisting lists numbers of the existing unsolved tickets above that must finish first. Keep the graph as parallel as possible. No cycles.
 - Answer directly from the request — do not use any tools.`,
   ]
     .filter(Boolean)

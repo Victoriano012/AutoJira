@@ -53,6 +53,11 @@ export interface Ticket {
   /** Stopped by the person, not by dependencies: it stays out of the queue and
    * shows a Run button until they start it again. */
   paused?: boolean;
+  /** Workspace-relative paths this ticket expects to touch. Two tickets in the
+   * same graph that share a file are never run at the same time (see
+   * `fileBlockedBy`) — file contention is computed from this list, never turned
+   * into a dependency edge. */
+  files?: string[];
 }
 
 export interface TicketGraph {
@@ -251,13 +256,60 @@ export function isTicketWaiting(t: Ticket, depsSatisfied: boolean): boolean {
   );
 }
 
-/** True if running the graph now could make progress somewhere inside. */
+/** The same file named two ways ("./src/a.ts", "src/a.ts") is one file. */
+const normFile = (f: string) => f.trim().replace(/^\.?\//, "");
+
+/**
+ * Why this ticket cannot start: another ticket in the same graph is going to
+ * touch one of its files. Two agents must never edit one file at once, so the
+ * second ticket waits — computed from the files each ticket declares, never
+ * stored as a dependency, so the graph draws no edge for it.
+ *
+ * A ticket holds its files until it is *done*, not until its agent stops: a
+ * ticket sitting in review can still be sent back with feedback, which would
+ * put a second agent into a file someone else had already started editing.
+ * Order settles who goes first — earlier in the graph wins — except that a
+ * ticket already running holds its files whatever the order.
+ */
+export function fileBlockedBy(
+  g: TicketGraph,
+  ticketId: string
+): { file: string; by: Ticket } | null {
+  const i = g.tickets.findIndex((t) => t.id === ticketId);
+  if (i < 0) return null;
+  const mine = (g.tickets[i].files ?? []).map(normFile);
+  if (mine.length === 0) return null;
+  for (let j = 0; j < g.tickets.length; j++) {
+    const o = g.tickets[j];
+    if (j === i || isTicketDone(o) || !o.files?.length) continue;
+    if (j > i && o.status !== "running") continue;
+    const file = o.files.map(normFile).find((f) => mine.includes(f));
+    if (file) return { file, by: o };
+  }
+  return null;
+}
+
+/** The files this ticket is holding that another ticket is waiting for — what
+ * a running card shows to say why the rest of the board is waiting on it. */
+export function blockingFiles(g: TicketGraph, ticketId: string): string[] {
+  const out = new Set<string>();
+  for (const o of g.tickets) {
+    if (o.id === ticketId) continue;
+    const claim = fileBlockedBy(g, o.id);
+    if (claim?.by.id === ticketId) out.add(claim.file);
+  }
+  return [...out];
+}
+
+/** True if running the graph now could make progress somewhere inside.
+ * File-blocked tickets do not count: the scheduler will not dispatch them, and
+ * a parent that thought otherwise would re-enter this graph forever. */
 export function hasRunnableWork(g: TicketGraph): boolean {
   return g.tickets.some((t) => {
     if (isTicketDone(t)) return false;
     if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
     if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
-    return t.status === "todo";
+    return t.status === "todo" && !fileBlockedBy(g, t.id);
   });
 }
 

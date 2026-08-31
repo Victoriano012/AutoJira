@@ -2,6 +2,7 @@ import {
   Attachment,
   contextChain,
   dependenciesOf,
+  fileBlockedBy,
   graphAtPath,
   hasRunnableWork,
   isTicketDone,
@@ -348,6 +349,19 @@ export async function runTicket(
   const ticket = ticketAtPath(project.graph, path, ticketId);
   if (!ticket) return;
 
+  // The scheduler filters these out, so this catches the person pressing Run on
+  // a card whose file someone else is already in. Saying so beats doing nothing.
+  const g = graphAtPath(project.graph, path);
+  const claim = g && fileBlockedBy(g, ticketId);
+  if (claim) {
+    store.appendLog(dir, path, ticketId, {
+      kind: "info",
+      text: `Waiting for ${claim.file}: “${claim.by.title}” is changing it.`,
+      ts: Date.now(),
+    });
+    return;
+  }
+
   if (ticket.subgraph.tickets.length > 0) {
     store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
     await runGraph(dir, [...path, ticketId]);
@@ -408,6 +422,9 @@ export async function runGraph(
           if (inFlight.has(t.id) || isTicketDone(t)) return false;
           if (registry.userStopped.has(ticketScope(dir, path, t.id))) return false;
           if (!dependenciesOf(g, t.id).every(satisfiesDependents)) return false;
+          // Never two agents in one file: a ticket whose files another
+          // unfinished ticket is touching waits, without any edge between them.
+          if (fileBlockedBy(g, t.id)) return false;
           // Parents are ready only while something inside can actually progress.
           if (t.subgraph.tickets.length > 0) return hasRunnableWork(t.subgraph);
           return t.status === "todo";
