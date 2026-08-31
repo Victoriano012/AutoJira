@@ -12,6 +12,7 @@ import {
   TicketStatus,
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
+import { Spinner } from "./icons";
 import { memo, useMemo } from "react";
 
 export type TicketNodeType = Node<
@@ -162,7 +163,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         )}
         {running ? (
           <span className="flex items-center gap-1.5">
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+            <Spinner />
             {/* A sized square, not the ◼ glyph: font rendering made it tiny. */}
             <button
               onClick={(e) => {

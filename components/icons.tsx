@@ -48,6 +48,16 @@ export function PlayIcon({ size }: { size?: number }) {
   );
 }
 
+/** Ring spinner marking work in progress; sized by the caller's class. */
+export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`${className} block animate-spin rounded-full border border-blue-400 border-t-transparent`}
+    />
+  );
+}
+
 export function StopIcon({ size }: { size?: number }) {
   return (
     <Svg size={size}>

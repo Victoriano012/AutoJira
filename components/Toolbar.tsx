@@ -8,7 +8,7 @@ import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
 import ArrowLeftIcon from "./ArrowLeftIcon";
 import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
-import { LayoutIcon, PlayIcon, PlusIcon, StopIcon } from "./icons";
+import { LayoutIcon, PlayIcon, PlusIcon, Spinner, StopIcon } from "./icons";
 import PopulateModal from "./PopulateModal";
 import SettingsModal from "./SettingsModal";
 
@@ -166,9 +166,11 @@ export default function Toolbar() {
             <PlayIcon />
           </button>
         )}
-        {running && (
-          <span className="text-sm text-emerald-600 animate-pulse">running…</span>
-        )}
+        {/* Slot kept at icon size whether or not it holds the spinner, so the
+            row doesn't shift when a run starts. */}
+        <span className="h-5 w-5" title={running ? "Run in progress" : undefined}>
+          {running && <Spinner className="h-5 w-5" />}
+        </span>
       </div>
 
       <div className="shrink-0 flex items-center gap-3">
