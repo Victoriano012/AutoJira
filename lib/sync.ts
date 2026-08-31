@@ -71,6 +71,10 @@ type StreamEvent =
   | { type: "ping" };
 
 let source: EventSource | null = null;
+/** Timers keeping the feed alive — see `openStream`. */
+let reopenTimer: ReturnType<typeof setTimeout> | null = null;
+let watchdog: ReturnType<typeof setInterval> | null = null;
+let lastEvent = 0;
 /** The last server state applied here — the base a run-field edit is a diff
  * against, so the browser can tell its own deliberate changes (Reopen, a chat
  * session) apart from run output it merely received. */
@@ -88,6 +92,10 @@ function applyRemote(fn: () => void): void {
 }
 
 function closeStream(): void {
+  if (reopenTimer) clearTimeout(reopenTimer);
+  if (watchdog) clearInterval(watchdog);
+  reopenTimer = null;
+  watchdog = null;
   source?.close();
   source = null;
   applyRunState({ loops: [], active: [], tickets: [] });
@@ -102,8 +110,40 @@ function openStream(dir: string): void {
   if (typeof EventSource === "undefined") return;
   const es = new EventSource(`/api/runs/stream?dir=${encodeURIComponent(dir)}`);
   source = es;
+  lastEvent = Date.now();
+
+  // EventSource retries a dropped connection by itself, but not every way a
+  // feed dies looks like that. A non-200 — a 404 for a project the server has
+  // not loaded, a 500 while the route recompiles — closes it for good, and a
+  // connection that dies quietly (sleep, a proxy) just stops delivering with no
+  // error at all. Either way the tab goes deaf: statuses stop arriving and only
+  // a reload brings it back, which is what "I rejected it and it only moved
+  // after a refresh" looks like. So reopen a closed feed, and treat silence as
+  // closed — the server pings every 25s, and a new connection opens with a
+  // snapshot, so one reconnect catches up on everything missed.
+  const reconnect = () => {
+    if (source !== es) return;
+    // Not `closeStream`: the runs are still running, so the run state stays as
+    // it was rather than blinking empty until the next snapshot.
+    es.close();
+    source = null;
+    if (watchdog) clearInterval(watchdog);
+    watchdog = null;
+    reopenTimer = setTimeout(() => {
+      reopenTimer = null;
+      if (useStore.getState().projectId === dir) openStream(dir);
+    }, 3000);
+  };
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) reconnect();
+  };
+  watchdog = setInterval(() => {
+    if (Date.now() - lastEvent > 60_000) reconnect();
+  }, 15_000);
+
   es.onmessage = (ev) => {
     if (source !== es) return;
+    lastEvent = Date.now();
     let msg: StreamEvent;
     try {
       msg = JSON.parse(ev.data);

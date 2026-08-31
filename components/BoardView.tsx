@@ -306,6 +306,38 @@ export default function BoardView() {
   const rejectBoxRef = useRef<HTMLDivElement>(null);
   const rejectInputRef = useRef<HTMLTextAreaElement>(null);
   const rejectDraft = rejectingId ? (rejectDrafts[rejectingId] ?? "") : "";
+  /** Rejections the server has not answered yet, by ticket id → when they were
+   * sent. The person is done with these cards, so they leave review at once;
+   * the server decides where they land. */
+  const [rejected, setRejected] = useState<Record<string, number>>({});
+
+  // The hold lasts exactly until the truth arrives — the card's status moves
+  // off review — and no longer than a few seconds regardless, so a status that
+  // never comes leaves the card where the server really has it rather than
+  // pinned in the wrong column.
+  useEffect(() => {
+    const ids = Object.keys(rejected);
+    if (ids.length === 0) return;
+    const drop = (stale: string[]) => {
+      if (stale.length === 0) return;
+      setRejected((r) => {
+        const next = { ...r };
+        for (const id of stale) delete next[id];
+        return next;
+      });
+    };
+    drop(
+      ids.filter((id) => {
+        const t = graph?.tickets.find((x) => x.id === id);
+        return !t || t.status !== "review";
+      })
+    );
+    const timer = setTimeout(
+      () => drop(ids.filter((id) => Date.now() - rejected[id] > 10_000)),
+      10_000
+    );
+    return () => clearTimeout(timer);
+  }, [rejected, graph]);
 
   // Grows with the text up to two lines, then scrolls — same as ChatInput.
   // Reopening on another ticket re-runs it, so a restored multi-line draft
@@ -361,7 +393,15 @@ export default function BoardView() {
     const msg = (rejectDrafts[ticketId] ?? "").trim() || DEFAULT_REJECTION;
     setRejectingId(null);
     setRejectDrafts((d) => ({ ...d, [ticketId]: "" }));
-    void rejectTicket(path, ticketId, msg);
+    setRejected((r) => ({ ...r, [ticketId]: Date.now() }));
+    void rejectTicket(path, ticketId, msg).catch(() =>
+      // The rejection never reached the server: the card is still the person's.
+      setRejected((r) => {
+        const next = { ...r };
+        delete next[ticketId];
+        return next;
+      })
+    );
   }
 
   // ---- FLIP column-move animation + dependency lines ----
@@ -494,7 +534,12 @@ export default function BoardView() {
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
-    byColumn.get(boardColumn(graph, t))!.push(t);
+    // A card whose rejection is on its way to the server is going back to its
+    // agent, so it is placed as the todo it is about to become: Working, or
+    // Blocked if another card holds its file. It leaves review on the click,
+    // not a round-trip later.
+    const asked = rejected[t.id] ? { ...t, status: "todo" as const } : t;
+    byColumn.get(boardColumn(graph, asked))!.push(t);
   }
   const doneKey = byColumn
     .get("done")!
