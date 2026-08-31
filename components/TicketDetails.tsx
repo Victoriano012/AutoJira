@@ -40,9 +40,12 @@ export function TicketDetailsHeader({
   // A human ticket is a gate, not agent work: its board is the interface, so
   // play opens it — the same thing the node does.
   const isHuman = ticket.type === "human_review";
+  const hasSubgraph = ticket.subgraph.tickets.length > 0;
   const runLabel = isHuman
-    ? "Open the human-interaction window"
-    : ticket.subgraph.tickets.length > 0
+    ? hasSubgraph
+      ? "Open the human-interaction window and start its board"
+      : "Open the human-interaction window"
+    : hasSubgraph
       ? "Run subgraph"
       : "Run";
   // Brief acknowledgement of a run click, for tickets that settle back to
@@ -74,8 +77,11 @@ export function TicketDetailsHeader({
           className="shrink-0 text-emerald-600 hover:text-emerald-500"
           title={runLabel}
           onClick={() => {
-            if (isHuman) return setPath([...path, ticket.id]);
             ack();
+            if (isHuman) {
+              setPath([...path, ticket.id]);
+              if (!hasSubgraph) return; // empty board: just open it
+            }
             void runTicket(path, ticket.id);
           }}
         >
