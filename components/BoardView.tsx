@@ -71,6 +71,10 @@ interface PendingRequest {
   error?: string;
 }
 
+/** Sent to the agent when a card is rejected with nothing typed. */
+const DEFAULT_REJECTION =
+  "This isn't finished. Go back over the work, find what is missing or wrong, and complete it properly.";
+
 interface DepLine {
   id: string;
   d: string; // svg path
@@ -83,8 +87,14 @@ interface DepLine {
 export default function BoardView() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
-  const selectedId = useStore((s) => s.selectedId);
-  const { select, updateGraph, updateTicket } = useStore.getState();
+  const { updateGraph, updateTicket } = useStore.getState();
+
+  // Card selection is local to the board: it only expands the card's
+  // description. Routing it through the store's selection would also open the
+  // canvas's side details panel, which has no place in board view.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const pathKey = path.join("/");
+  useEffect(() => setSelectedId(null), [pathKey]);
 
   const graph = graphAtPath(project.graph, path);
 
@@ -209,13 +219,25 @@ export default function BoardView() {
 
   // ---- reject flow (red cross on a review card) ----
   const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectText, setRejectText] = useState("");
+  // Drafts outlive the input: one per ticket, dropped only when the person
+  // empties the box themselves or the rejection is actually sent.
+  const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({});
+  const rejectBoxRef = useRef<HTMLDivElement>(null);
+
+  // Anything pressed outside the open input dismisses it, draft intact.
+  useEffect(() => {
+    if (!rejectingId) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rejectBoxRef.current?.contains(e.target as Node)) setRejectingId(null);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [rejectingId]);
 
   function submitReject(ticketId: string) {
-    const msg = rejectText.trim();
-    if (!msg) return;
+    const msg = (rejectDrafts[ticketId] ?? "").trim() || DEFAULT_REJECTION;
     setRejectingId(null);
-    setRejectText("");
+    setRejectDrafts((d) => ({ ...d, [ticketId]: "" }));
     void rejectTicket(path, ticketId, msg);
   }
 
@@ -358,7 +380,7 @@ export default function BoardView() {
                 <div
                   key={t.id}
                   ref={cardRef(t.id)}
-                  onClick={() => select(t.id)}
+                  onClick={() => setSelectedId((id) => (id === t.id ? null : t.id))}
                   className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
                     t.id === selectedId
                       ? "border-violet-500"
@@ -370,8 +392,10 @@ export default function BoardView() {
                   <div className="line-clamp-2 text-sm font-medium text-zinc-900">
                     {t.title}
                   </div>
-                  {t.description && (
-                    <div className="mt-1 line-clamp-2 text-xs text-zinc-500">
+                  {/* Description only on the pressed card — capped at ~6 lines
+                   * (text-xs line-height is 1rem), the rest scrolls. */}
+                  {t.id === selectedId && t.description && (
+                    <div className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500">
                       {t.description}
                     </div>
                   )}
@@ -414,24 +438,22 @@ export default function BoardView() {
                   {col.id === "review" && (
                     <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                       {rejectingId === t.id ? (
-                        <div className="flex items-center gap-1.5">
+                        <div ref={rejectBoxRef} className="flex items-center gap-1.5">
                           <input
                             autoFocus
                             className="min-w-0 flex-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs outline-none focus:border-red-400"
                             placeholder="What's wrong?"
-                            value={rejectText}
-                            onChange={(e) => setRejectText(e.target.value)}
+                            value={rejectDrafts[t.id] ?? ""}
+                            onChange={(e) =>
+                              setRejectDrafts((d) => ({ ...d, [t.id]: e.target.value }))
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") submitReject(t.id);
-                              if (e.key === "Escape") {
-                                setRejectingId(null);
-                                setRejectText("");
-                              }
+                              if (e.key === "Escape") setRejectingId(null);
                             }}
                           />
                           <button
-                            className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400 disabled:opacity-50"
-                            disabled={!rejectText.trim()}
+                            className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400"
                             onClick={() => submitReject(t.id)}
                           >
                             Send
@@ -449,10 +471,7 @@ export default function BoardView() {
                           <button
                             className="flex-1 rounded-md bg-red-100 py-1 text-xs font-medium text-red-600 hover:bg-red-200"
                             title="Reject — describe what's wrong"
-                            onClick={() => {
-                              setRejectingId(t.id);
-                              setRejectText("");
-                            }}
+                            onClick={() => setRejectingId(t.id)}
                           >
                             ✕
                           </button>
