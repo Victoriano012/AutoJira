@@ -641,9 +641,8 @@ export default function BoardView() {
     const mine = (noteSeq.current.get(t.id) ?? 0) + 1;
     noteSeq.current.set(t.id, mine);
     // The card says "Sending…" for exactly as long as that is true, and then
-    // what came of it. The round trip is usually too quick to read, so the
-    // answer for a working card stays up on its own: the agent has the
-    // indication from its next turn, not at some later stop.
+    // only what is still worth saying: a working card's agent has the
+    // indication, so the line goes and leaves the card as it was.
     flashNote(t.id, { text: "Sending…", className: "text-zinc-400" });
     // The flush inside this call is what carries the description above to the
     // server, so a card that starts a moment later already has the indication.
@@ -652,11 +651,7 @@ export default function BoardView() {
       if (!sent) {
         flashNote(t.id, { text: "Not sent — send it again", className: "text-red-500" });
       } else if (live) {
-        flashNote(
-          t.id,
-          { text: "Sent — the agent has it now", className: "text-violet-500" },
-          2500
-        );
+        flashNote(t.id, null);
       } else {
         flashNote(
           t.id,
