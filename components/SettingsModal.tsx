@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
+import { DEFAULT_MODEL } from "@/lib/models";
 
 const MODELS = [
-  { value: "claude-fable-5", label: "Fable (default)" },
-  { value: "claude-opus-5", label: "Opus" },
-  { value: "claude-sonnet-5", label: "Sonnet" },
-  { value: "claude-haiku-4-5-20251001", label: "Haiku" },
+  { value: DEFAULT_MODEL, label: "Fable 5 (default)" },
+  { value: "claude-opus-5", label: "Opus 5" },
+  { value: "claude-sonnet-5", label: "Sonnet 5" },
+  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
 ];
 
 /** App-wide settings. Add future settings as more labeled rows below. */
@@ -17,14 +18,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const workspaceDir = useStore((s) => s.project.workspaceDir);
   const setProject = useStore((s) => s.setProject);
 
-  const [model, setModel] = useState("claude-fable-5");
+  const [model, setModel] = useState(DEFAULT_MODEL);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void fetch("/api/config")
       .then((res) => res.json())
-      .then((cfg: { model?: string }) => setModel(cfg.model || "claude-fable-5"))
+      .then((cfg: { model?: string }) => setModel(cfg.model || DEFAULT_MODEL))
       .finally(() => setLoaded(true));
   }, []);
 
