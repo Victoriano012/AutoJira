@@ -177,14 +177,14 @@ export default function ChatPanel() {
             ) : (
               <p
                 key={i}
-                className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-800 whitespace-pre-wrap"
+                className="font-mono text-sm text-zinc-800 whitespace-pre-wrap"
               >
                 {m.text}
               </p>
             )
           )}
           {pending && (
-            <p className="mr-8 rounded-lg bg-zinc-100 px-3 py-2 font-mono text-sm text-zinc-500 animate-pulse">
+            <p className="font-mono text-sm text-zinc-500 animate-pulse whitespace-pre-wrap">
               Working…
             </p>
           )}
