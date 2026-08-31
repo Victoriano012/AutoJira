@@ -48,12 +48,20 @@ export function PlayIcon({ size }: { size?: number }) {
   );
 }
 
-/** Ring spinner marking work in progress; sized by the caller's class. */
-export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
+/** Ring spinner marking work in progress; sized by the caller's class. The
+ * ring colour is a prop rather than part of `className` so it can't lose to
+ * the default in the stylesheet's own order (a populate spins violet). */
+export function Spinner({
+  className = "h-3.5 w-3.5",
+  color = "border-blue-400",
+}: {
+  className?: string;
+  color?: string;
+}) {
   return (
     <span
       aria-hidden
-      className={`${className} block animate-spin rounded-full border border-blue-400 border-t-transparent`}
+      className={`${className} block animate-spin rounded-full border ${color} border-t-transparent`}
     />
   );
 }

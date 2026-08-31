@@ -2,6 +2,13 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { autoLayout } from "@/lib/layout";
+import {
+  abortPopulate,
+  clearPopulateResult,
+  isPopulating,
+  populateState,
+  subscribePopulate,
+} from "@/lib/populate-job";
 import { isGraphRunning, runGraph, stopGraph, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import {
@@ -43,6 +50,16 @@ export default function Toolbar() {
     () => isGraphRunning(path),
     () => false
   );
+  // Populating happens in the background now, so this row — not the modal —
+  // is what shows it, and the modal comes back here when the result needs the
+  // person (a confirmation, or an error).
+  const populate = useSyncExternalStore(
+    subscribePopulate,
+    populateState,
+    populateState
+  );
+  const populatingHere = isPopulating(path);
+
   // A run that parks on a human gate settles before the click is over, so the
   // button would never appear to react; hold the running look for a moment.
   const [acking, ack] = useRunAck();
@@ -168,17 +185,24 @@ export default function Toolbar() {
           <PlusIcon />
         </button>
         <button
-          className="rounded-lg px-2 py-1.5 text-xl leading-none hover:bg-zinc-200"
+          className="rounded-lg px-2 py-1.5 text-xl leading-none hover:bg-zinc-200 disabled:opacity-50"
           onClick={() => setShowPopulate(true)}
-          title="Populate with AI"
+          disabled={isPopulating()}
+          title={isPopulating() ? "Already populating with AI" : "Populate with AI"}
         >
           ✨
         </button>
-        {running ? (
+        {running || populatingHere ? (
+          // Same slot, violet when it is a populate rather than a run — the
+          // two are told apart by colour, not by position.
           <button
-            className="rounded-lg px-2 py-1.5 text-red-600 hover:bg-zinc-200 hover:text-red-500"
-            onClick={() => stopGraph(path)}
-            title="Stop the run"
+            className={`rounded-lg px-2 py-1.5 hover:bg-zinc-200 ${
+              running
+                ? "text-red-600 hover:text-red-500"
+                : "text-violet-600 hover:text-violet-500"
+            }`}
+            onClick={() => (running ? stopGraph(path) : abortPopulate())}
+            title={running ? "Stop the run" : "Stop populating with AI"}
           >
             <StopIcon />
           </button>
@@ -198,8 +222,21 @@ export default function Toolbar() {
         )}
         {/* Slot kept at icon size whether or not it holds the spinner, so the
             row doesn't shift when a run starts. */}
-        <span className="h-5 w-5" title={running ? "Run in progress" : undefined}>
-          {running && <Spinner className="h-5 w-5" />}
+        <span
+          className="h-5 w-5"
+          title={
+            running
+              ? "Run in progress"
+              : populatingHere
+                ? "Populating with AI"
+                : undefined
+          }
+        >
+          {running ? (
+            <Spinner className="h-5 w-5" />
+          ) : (
+            populatingHere && <Spinner className="h-5 w-5" color="border-violet-500" />
+          )}
         </span>
       </div>
 
@@ -235,7 +272,15 @@ export default function Toolbar() {
         </button>
       </div>
 
-      {showPopulate && <PopulateModal onClose={() => setShowPopulate(false)} />}
+      {(showPopulate || populate.result) && (
+        <PopulateModal
+          result={populate.result}
+          onClose={() => {
+            setShowPopulate(false);
+            clearPopulateResult();
+          }}
+        />
+      )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </header>
   );
