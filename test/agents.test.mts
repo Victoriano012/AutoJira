@@ -39,7 +39,7 @@ test("legacy sessions remain Claude sessions and providers never cross-resume", 
 test("new Codex work runs through the CLI with the selected model and workspace", () => {
   const args = codexArgs({
     model: "gpt-5.6-sol",
-    workspaceDir: "/tmp/autojira-test-workspace",
+    workspaceDir: "/tmp/autoproject-test-workspace",
     writeAccess: true,
   });
   assert.deepEqual(args, [
@@ -50,7 +50,7 @@ test("new Codex work runs through the CLI with the selected model and workspace"
     "--skip-git-repo-check",
     "--dangerously-bypass-approvals-and-sandbox",
     "--cd",
-    "/tmp/autojira-test-workspace",
+    "/tmp/autoproject-test-workspace",
     "-",
   ]);
 });
@@ -60,7 +60,7 @@ test("Codex planner resumes keep their thread and structured-output schema", () 
     {
       model: "gpt-5.6-luna",
       sessionId: "codex:thread-456",
-      workspaceDir: "/tmp/autojira-test-workspace",
+      workspaceDir: "/tmp/autoproject-test-workspace",
       writeAccess: false,
     },
     "/tmp/schema.json"

@@ -259,7 +259,7 @@ function CardComposer({
 
 /** Unsent request text, per board, kept outside React so a remount can't eat
  * it. sessionStorage: it belongs to this tab, and nothing here needs a server. */
-const DRAFT_KEY = "autojira-board-draft:";
+const DRAFT_KEY = "autoproject-board-draft:";
 function readDraft(pathKey: string) {
   try {
     return sessionStorage.getItem(DRAFT_KEY + pathKey) ?? "";
@@ -277,7 +277,7 @@ function writeDraft(pathKey: string, value: string) {
 }
 
 /** Requests that have been sent but not turned into tickets yet, per board. */
-const REQUESTS_KEY = "autojira-board-requests:";
+const REQUESTS_KEY = "autoproject-board-requests:";
 function readRequests(pathKey: string): PendingRequest[] {
   try {
     const raw = sessionStorage.getItem(REQUESTS_KEY + pathKey);

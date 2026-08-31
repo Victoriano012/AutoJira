@@ -93,12 +93,12 @@ export async function* streamCodexAgent(
   let schemaDir: string | undefined;
   let schemaPath: string | undefined;
   if (req.outputSchema) {
-    schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "autojira-codex-schema-"));
+    schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "autoproject-codex-schema-"));
     schemaPath = path.join(schemaDir, "schema.json");
     fs.writeFileSync(schemaPath, JSON.stringify(req.outputSchema));
   }
 
-  const executable = process.env.AUTOJIRA_CODEX_PATH?.trim() || "codex";
+  const executable = process.env.AUTOPROJECT_CODEX_PATH?.trim() || "codex";
   const child = spawn(/* turbopackIgnore: true */ executable, codexArgs(req, schemaPath), {
     cwd: req.workspaceDir,
     env: process.env,
@@ -204,7 +204,7 @@ export async function* streamCodexAgent(
       yield {
         type: "error",
         message: spawnError?.message.includes("ENOENT")
-          ? "Codex CLI was not found. Install it, run `codex login`, and restart AutoJira."
+          ? "Codex CLI was not found. Install it, run `codex login`, and restart AutoProject."
           : detail,
       };
     }

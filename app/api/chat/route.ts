@@ -35,8 +35,8 @@ export async function POST(req: Request) {
 
   const cwd =
     workspaceDir?.trim() ||
-    process.env.AUTOJIRA_WORKSPACE ||
-    path.join(os.tmpdir(), "autojira-workspace");
+    process.env.AUTOPROJECT_WORKSPACE ||
+    path.join(os.tmpdir(), "autoproject-workspace");
   fs.mkdirSync(cwd, { recursive: true });
   const model = selectedModel();
   const activeSession = resumableSession(sessionId, model)?.stored;

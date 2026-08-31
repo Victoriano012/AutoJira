@@ -4,7 +4,7 @@ import path from "path";
 import { DEFAULT_MODEL } from "./models";
 
 /** App-wide settings, shared by every project. */
-const CONFIG = path.join(os.homedir(), ".autojira", "config.json");
+const CONFIG = path.join(os.homedir(), ".autoproject", "config.json");
 
 export interface AppConfig {
   /** Model override for the AI agents; unset = `DEFAULT_MODEL`. */

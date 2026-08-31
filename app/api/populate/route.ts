@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   let cwd = os.tmpdir();
   let files: string[] = [];
   if (attachments?.length) {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "autojira-populate-"));
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "autoproject-populate-"));
     files = writeAttachments(cwd, attachments);
   }
 

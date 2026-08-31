@@ -27,7 +27,7 @@ export const MODEL_CHOICES: readonly ModelChoice[] = [
 
 /** Claude model IDs are the only special case. Other configured model IDs are
  * intentionally sent through Codex so a user can add a newer Codex model to
- * ~/.autojira/config.json before this list catches up. */
+ * ~/.autoproject/config.json before this list catches up. */
 export function providerForModel(model: string): ModelProvider {
   return model.startsWith("claude-") ? "claude" : "codex";
 }

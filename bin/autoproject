@@ -1,0 +1,15 @@
+#!/bin/bash
+# Launches AutoProject (starting the server if needed) and opens it in the browser.
+APP_DIR="$HOME/Documents/personal/AutoProject"
+PORT=4123
+URL="http://localhost:$PORT"
+
+if ! curl -sf "$URL/api/projects" >/dev/null 2>&1; then
+  mkdir -p "$HOME/.autoproject"
+  (cd "$APP_DIR" && nohup npm run dev -- --port $PORT >> "$HOME/.autoproject/server.log" 2>&1 &)
+  for _ in $(seq 1 60); do
+    curl -sf "$URL/api/projects" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+fi
+open "$URL"

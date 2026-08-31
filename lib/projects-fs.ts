@@ -4,9 +4,9 @@ import path from "path";
 import { defaultProject, isTicketDone, Project } from "./types";
 
 /** New projects are created as subfolders of this directory. */
-const BASE = process.env.AUTOJIRA_HOME || path.join(os.homedir(), "Documents", "personal");
+const BASE = process.env.AUTOPROJECT_HOME || path.join(os.homedir(), "Documents", "personal");
 /** Remembers workspaces imported from outside BASE. */
-const REGISTRY = path.join(os.homedir(), ".autojira", "imports.json");
+const REGISTRY = path.join(os.homedir(), ".autoproject", "imports.json");
 
 export interface ProjectRow {
   id: string; // absolute workspace path
@@ -18,7 +18,7 @@ export interface ProjectRow {
   done: boolean;
 }
 
-const projectFile = (dir: string) => path.join(dir, ".autojira", "project.json");
+const projectFile = (dir: string) => path.join(dir, ".autoproject", "project.json");
 
 function readRegistry(): string[] {
   try {
@@ -42,7 +42,7 @@ export function readProject(dir: string): Project | null {
 }
 
 export function writeProject(dir: string, project: Project) {
-  fs.mkdirSync(path.join(dir, ".autojira"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".autoproject"), { recursive: true });
   fs.writeFileSync(projectFile(dir), JSON.stringify(project, null, 2));
 }
 
@@ -83,7 +83,7 @@ export function createProject(name: string): ProjectRow {
   return row(dir)!;
 }
 
-/** Any folder works: adopts an existing .autojira, creates one otherwise.
+/** Any folder works: adopts an existing .autoproject, creates one otherwise.
  * Re-importing a hidden project brings it back onto the meta-graph. */
 export function importProject(rawPath: string): ProjectRow {
   const dir = path.resolve(rawPath.replace(/^~(?=\/|$)/, os.homedir()));

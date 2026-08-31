@@ -25,9 +25,9 @@ interface Entry {
 // Module state must survive dev hot-reloads, or a recompile would orphan every
 // live run's bookkeeping.
 const globals = globalThis as unknown as {
-  __autojiraProjects?: Map<string, Entry>;
+  __autoprojectProjects?: Map<string, Entry>;
 };
-const entries: Map<string, Entry> = (globals.__autojiraProjects ??= new Map());
+const entries: Map<string, Entry> = (globals.__autoprojectProjects ??= new Map());
 
 const WRITE_DEBOUNCE_MS = 250;
 

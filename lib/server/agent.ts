@@ -56,8 +56,8 @@ function describeTool(name: string, input: unknown): string {
 function workspaceDir(requested?: string): string {
   return (
     requested?.trim() ||
-    process.env.AUTOJIRA_WORKSPACE ||
-    path.join(os.tmpdir(), "autojira-workspace")
+    process.env.AUTOPROJECT_WORKSPACE ||
+    path.join(os.tmpdir(), "autoproject-workspace")
   );
 }
 
@@ -68,7 +68,7 @@ function promptWithAttachments(
 ): string {
   if (!attachments?.length) return prompt;
   const files = writeAttachments(
-    path.join(cwd, ".autojira", "attachments"),
+    path.join(cwd, ".autoproject", "attachments"),
     attachments
   );
   return (

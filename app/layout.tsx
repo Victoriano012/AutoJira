@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AutoJira",
+  title: "AutoProject",
   description: "A graph of tickets where the AI does the work",
 };
 

@@ -1,4 +1,4 @@
-/** AutoJira mark: the smallest possible DAG — two ticket cards converging on
+/** AutoProject mark: the smallest possible DAG — two ticket cards converging on
  * one, joined by the orthogonal edge the graph editor draws. Convergence, not
  * divergence: a ticket waiting on its dependencies is the shape every board in
  * this app has. Colours are the app's own status palette, so the mark reads as

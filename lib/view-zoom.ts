@@ -67,9 +67,9 @@ type State = {
 const win =
   typeof window === "undefined"
     ? null
-    : (window as unknown as { __autojiraViewZoom2?: State });
+    : (window as unknown as { __autoprojectViewZoom2?: State });
 const S: State =
-  win?.__autojiraViewZoom2 ?? {
+  win?.__autoprojectViewZoom2 ?? {
     cards: new Map(),
     box: null,
     shield: null,
@@ -77,7 +77,7 @@ const S: State =
     rafs: [],
     commit: null,
   };
-if (win) win.__autojiraViewZoom2 = S;
+if (win) win.__autoprojectViewZoom2 = S;
 
 function ensure(): { box: HTMLDivElement; shield: HTMLDivElement } {
   if (!S.box || !S.box.isConnected) {

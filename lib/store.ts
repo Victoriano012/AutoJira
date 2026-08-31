@@ -210,7 +210,7 @@ const freshStore = create<AppState>()(
         })),
     }),
     {
-      name: "autojira-project",
+      name: "autoproject-project",
       // Project data lives on the server; only remember which project is open
       // and where inside it the person was — `openProject` re-validates that
       // path against the graph it fetches before restoring it.
@@ -239,6 +239,6 @@ const freshStore = create<AppState>()(
 const win =
   typeof window === "undefined"
     ? null
-    : (window as unknown as { __autojiraStore?: typeof freshStore });
-export const useStore = win?.__autojiraStore ?? freshStore;
-if (win) win.__autojiraStore = useStore;
+    : (window as unknown as { __autoprojectStore?: typeof freshStore });
+export const useStore = win?.__autoprojectStore ?? freshStore;
+if (win) win.__autoprojectStore = useStore;

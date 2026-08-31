@@ -45,8 +45,8 @@ interface Registry {
   wakes: Map<string, () => void>;
 }
 
-const globals = globalThis as unknown as { __autojiraRegistry?: Registry };
-const registry: Registry = (globals.__autojiraRegistry ??= {
+const globals = globalThis as unknown as { __autoprojectRegistry?: Registry };
+const registry: Registry = (globals.__autoprojectRegistry ??= {
   controllers: new Map(),
   active: new Set(),
   loops: new Set(),

@@ -33,7 +33,7 @@ export const importProject = (path: string) => createOrImport({ path });
 export async function openProject(id: string, hold?: Promise<void>): Promise<void> {
   const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
   if (!res.ok) {
-    // folder gone or .autojira deleted — forget it
+    // folder gone or .autoproject deleted — forget it
     useStore.getState().closeProject();
     return;
   }
@@ -200,7 +200,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
  * note in store.ts) must not open a second feed and a second autosave beside
  * the ones already running against the same store. */
 const live = globalThis as unknown as {
-  __autojiraSync?: { flush: () => Promise<void>; poke: () => void };
+  __autoprojectSync?: { flush: () => Promise<void>; poke: () => void };
 };
 
 /** Push the open project now. Run-field changes the person made since the last
@@ -225,17 +225,17 @@ export function flushProject(): Promise<void> {
   return push();
 }
 
-/** Debounced push of the open project to its .autojira dir on every change. */
+/** Debounced push of the open project to its .autoproject dir on every change. */
 export function startAutosave(): void {
-  if (live.__autojiraSync) {
+  if (live.__autoprojectSync) {
     // A re-evaluated copy of this module: the feed and the autosave already
     // running own the state, so point the runner back at them instead of
     // starting a second pair beside them.
-    setProjectFlush(live.__autojiraSync.flush);
-    setStreamPoke(live.__autojiraSync.poke);
+    setProjectFlush(live.__autoprojectSync.flush);
+    setStreamPoke(live.__autoprojectSync.poke);
     return;
   }
-  live.__autojiraSync = { flush: flushProject, poke: () => poke() };
+  live.__autoprojectSync = { flush: flushProject, poke: () => poke() };
   setProjectFlush(flushProject);
   setStreamPoke(() => poke());
   let prevProject = useStore.getState().project;
