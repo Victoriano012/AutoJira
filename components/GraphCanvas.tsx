@@ -32,6 +32,12 @@ const nodeTypes: NodeTypes = { ticket: TicketNode };
 /** Long enough to read as movement, short enough to accompany the panel. */
 const PAN_MS = 220;
 
+/** A double-click opens the ticket's subgraph, and its first click selects —
+ * so the pan below waits this long before moving anything, leaving the node
+ * still under the pointer for the second click. Covers a comfortable
+ * double-click without the pan losing its immediacy. */
+const DOUBLE_CLICK_GRACE_MS = 260;
+
 /** Keeps the selected ticket clear of the details panel. The panel takes its
  * width out of the canvas, so the canvas' own right edge is the panel's left
  * edge: a ticket reaching past it — by a sliver or entirely — is panned
@@ -87,11 +93,23 @@ function PanForPanel({ areaRef }: { areaRef: React.RefObject<HTMLDivElement | nu
       move(to);
     };
 
-    centre();
-    // The panel is drag-resizable: follow it while it is open.
-    const ro = new ResizeObserver(centre);
-    ro.observe(area);
-    return () => ro.disconnect();
+    // Hold still for a moment first: a double-click navigates into the ticket's
+    // subgraph, and panning out from under the pointer makes its second click
+    // miss. Clearing the timer on selection change, panel close and unmount
+    // keeps a stale pan from firing for a ticket that is no longer selected;
+    // the double-click's own navigation clears the selection, so its pan is
+    // cancelled rather than played into a graph that has been replaced.
+    let ro: ResizeObserver | undefined;
+    const timer = window.setTimeout(() => {
+      centre();
+      // The panel is drag-resizable: follow it while it is open.
+      ro = new ResizeObserver(centre);
+      ro.observe(area);
+    }, DOUBLE_CLICK_GRACE_MS);
+    return () => {
+      clearTimeout(timer);
+      ro?.disconnect();
+    };
   }, [selectedId, areaRef, getNode, getViewport, setViewport]);
 
   return null;
