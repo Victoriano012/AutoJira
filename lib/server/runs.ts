@@ -4,11 +4,10 @@ import {
   dependenciesOf,
   fileBlockedBy,
   graphAtPath,
-  hasRunnableWork,
   isTicketDone,
+  notReadyReason,
   Project,
   satisfiesDependents,
-  satisfiesDependentsOnBoard,
   Ticket,
   ticketAtPath,
   TicketGraph,
@@ -466,29 +465,15 @@ export async function runTicket(
 function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
   // On a board a card in review is finished agent work, not a gate: the cards
   // after it may start. In the graph view a human ticket holds them.
+  // The rules themselves live in `notReadyReason`, which the board also uses to
+  // check that a card it shows in Working really is about to run. Only the two
+  // facts that exist solely in this process are supplied from here.
   const onBoard = isBoard(dir, path);
-  const satisfies = onBoard ? satisfiesDependentsOnBoard : satisfiesDependents;
-  return g.tickets.filter((t) => {
-    if (isTicketDone(t)) return false;
-    // Stopped by the person: `paused` is the persisted version of the same
-    // thing, so a card they stopped stays stopped across a server restart.
-    if (t.paused) return false;
-    if (registry.userStopped.has(ticketScope(dir, path, t.id))) return false;
-    if (!dependenciesOf(g, t.id).every(satisfies)) return false;
-    // Never two agents in one file: a ticket whose files another unfinished
-    // ticket is touching waits, without any edge between them.
-    if (fileBlockedBy(g, t.id, onBoard)) return false;
-    // Parents are ready only while something inside can actually progress —
-    // and only if nothing is already draining that subgraph. Dispatching a
-    // parent whose child loop is running returns instantly (runGraph is a
-    // no-op then), which would spin this loop as fast as the CPU allows.
-    if (t.subgraph.tickets.length > 0)
-      return (
-        !registry.loops.has(graphScope(dir, [...path, t.id])) &&
-        hasRunnableWork(t.subgraph)
-      );
-    return t.status === "todo";
-  });
+  const facts = {
+    stopped: (id: string) => registry.userStopped.has(ticketScope(dir, path, id)),
+    draining: (id: string) => registry.loops.has(graphScope(dir, [...path, id])),
+  };
+  return g.tickets.filter((t) => notReadyReason(g, t, onBoard, facts) === null);
 }
 
 /**
