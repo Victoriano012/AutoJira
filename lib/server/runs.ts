@@ -33,6 +33,9 @@ interface Registry {
   userStopped: Set<string>;
   /** Human messages waiting for a ticket's files to come free, by ticket key. */
   pendingFeedback: Map<string, string>;
+  /** Wakes a scheduler loop that is waiting on its runs, so it can pick up work
+   * that appeared since (a card added while another card was running). */
+  wakes: Map<string, () => void>;
 }
 
 const globals = globalThis as unknown as { __autojiraRegistry?: Registry };
@@ -42,9 +45,11 @@ const registry: Registry = (globals.__autojiraRegistry ??= {
   loops: new Set(),
   userStopped: new Set(),
   pendingFeedback: new Map(),
+  wakes: new Map(),
 });
-// A dev-server hot reload keeps the old registry object, which predates this map.
+// A dev-server hot reload keeps the old registry object, which predates these.
 registry.pendingFeedback ??= new Map();
+registry.wakes ??= new Map();
 
 const pathKey = (path: string[]) => path.join("/") || "(root)";
 const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
@@ -310,6 +315,9 @@ export async function sendFeedback(
             resultSummary: text.length > 1500 ? text.slice(0, 1500) + "…" : text,
           }
   );
+  // An answered ticket can unblock the rest of its board (its files come free,
+  // its dependents are satisfied) and nothing else here would notice.
+  autoRun(dir, path);
 }
 
 /**
@@ -418,6 +426,11 @@ export async function runTicket(
   } else {
     await runLeafTicket(dir, path, ticketId);
   }
+
+  // What just finished may have unblocked another card. Inside a scheduler loop
+  // this only nudges a loop that was going to look anyway; outside one — the run
+  // button, an unpause, an answered chat — it is the only thing that would.
+  autoRun(dir, path);
 }
 
 /** The tickets in this graph an agent could be started on right now. The
@@ -461,7 +474,14 @@ function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
  */
 export function autoRun(dir: string, path: string[]): void {
   if (!isBoard(dir, path)) return;
-  if (registry.loops.has(graphScope(dir, path))) return;
+  const k = graphScope(dir, path);
+  // A loop is already draining this board, but it is asleep until one of its
+  // runs finishes — which is why a card added next to a running one used to sit
+  // queued for as long as that card took. Wake it so it looks again now.
+  if (registry.loops.has(k)) {
+    registry.wakes.get(k)?.();
+    return;
+  }
   const project = store.getProject(dir);
   const g = project && graphAtPath(project.graph, path);
   if (!g || readyTickets(dir, path, g).length === 0) return;
@@ -533,13 +553,17 @@ export async function runGraph(
         }
       }
       if (inFlight.size === 0) break;
-      // Wake when any ticket finishes, then recompute the ready set.
-      await Promise.race(inFlight.values());
+      // Wake when any ticket finishes — or when `autoRun` says new work landed
+      // on this graph — then recompute the ready set.
+      const woken = new Promise<void>((resolve) => registry.wakes.set(k, resolve));
+      await Promise.race([...inFlight.values(), woken]);
+      registry.wakes.delete(k);
     }
   } finally {
     // The loop only ever waits on work in flight, so leaving it means this
     // level has settled: nothing beneath it is executing any more.
     registry.loops.delete(k);
+    registry.wakes.delete(k);
     const project = store.getProject(dir);
     const g = project && graphAtPath(project.graph, path);
     // Keep the resume flag only while a human still owes an answer (at any
