@@ -71,6 +71,9 @@ interface PendingRequest {
   error?: string;
 }
 
+/** 2 lines of text-xs (16px line-height) + py-1 (8px) + 2px border. */
+const REJECT_MAX_HEIGHT = 42;
+
 /** Sent to the agent when a card is rejected with nothing typed. */
 const DEFAULT_REJECTION =
   "This isn't finished. Go back over the work, find what is missing or wrong, and complete it properly.";
@@ -223,6 +226,20 @@ export default function BoardView() {
   // empties the box themselves or the rejection is actually sent.
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({});
   const rejectBoxRef = useRef<HTMLDivElement>(null);
+  const rejectInputRef = useRef<HTMLTextAreaElement>(null);
+  const rejectDraft = rejectingId ? (rejectDrafts[rejectingId] ?? "") : "";
+
+  // Grows with the text up to two lines, then scrolls — same as ChatInput.
+  // Reopening on another ticket re-runs it, so a restored multi-line draft
+  // comes back at the height it had.
+  useEffect(() => {
+    const el = rejectInputRef.current;
+    if (!el) return;
+    el.style.height = "auto"; // shrink so scrollHeight reflects the content
+    const h = Math.min(el.scrollHeight + 2, REJECT_MAX_HEIGHT);
+    el.style.height = `${h}px`;
+    el.style.overflowY = h >= REJECT_MAX_HEIGHT ? "auto" : "hidden";
+  }, [rejectingId, rejectDraft]);
 
   // Anything pressed outside the open input dismisses it, draft intact.
   useEffect(() => {
@@ -265,7 +282,12 @@ export default function BoardView() {
 
     // FLIP: cards keyed by ticket id — a card that changed column is a new
     // DOM node, but the delta from its previous rect still animates it
-    // continuously from where it was.
+    // continuously from where it was. The measured element is the wrapper and
+    // the animation runs on the card inside it, so a rect read here is always
+    // the card's settled position: measuring an animating element would report
+    // where it came from, and this effect (which runs after every render, and
+    // renders again whenever the lines move) would animate the opposite delta
+    // and loop until React gave up with "Maximum update depth exceeded".
     const next = new Map<string, DOMRect>();
     for (const [id, el] of cardRefs.current) {
       if (el.isConnected) next.set(id, el.getBoundingClientRect());
@@ -277,7 +299,7 @@ export default function BoardView() {
         const dx = old.left - rect.left;
         const dy = old.top - rect.top;
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          cardRefs.current.get(id)!.animate(
+          (cardRefs.current.get(id)!.firstElementChild as HTMLElement).animate(
             [
               { transform: `translate(${dx}px, ${dy}px)` },
               { transform: "translate(0, 0)" },
@@ -377,112 +399,119 @@ export default function BoardView() {
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
               {byColumn.get(col.id)!.map((t) => (
-                <div
-                  key={t.id}
-                  ref={cardRef(t.id)}
-                  onClick={() => setSelectedId((id) => (id === t.id ? null : t.id))}
-                  className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
-                    t.id === selectedId
-                      ? "border-violet-500"
-                      : t.status === "error"
-                        ? "border-red-300"
-                        : "border-zinc-200"
-                  }`}
-                >
-                  <div className="line-clamp-2 text-sm font-medium text-zinc-900">
-                    {t.title}
-                  </div>
-                  {/* Description only on the pressed card — capped at ~6 lines
-                   * (text-xs line-height is 1rem), the rest scrolls. */}
-                  {t.id === selectedId && t.description && (
-                    <div className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500">
-                      {t.description}
+                // The wrapper is what the effect above measures; the card
+                // inside it is what the FLIP animation moves.
+                <div key={t.id} ref={cardRef(t.id)}>
+                  <div
+                    onClick={() => setSelectedId((id) => (id === t.id ? null : t.id))}
+                    className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
+                      t.id === selectedId
+                        ? "border-violet-500"
+                        : t.status === "error"
+                          ? "border-red-300"
+                          : "border-zinc-200"
+                    }`}
+                  >
+                    <div className="line-clamp-2 text-sm font-medium text-zinc-900">
+                      {t.title}
                     </div>
-                  )}
-
-                  {col.id === "blocked" && (
-                    <div className="mt-2 text-[11px] text-zinc-400">
-                      ⛔{" "}
-                      {dependenciesOf(graph, t.id)
-                        .filter((d) => !satisfiesDependents(d))
-                        .map((d) => d.title)
-                        .join(", ") || "waiting on dependencies"}
-                    </div>
-                  )}
-
-                  {col.id === "working" &&
-                    (t.status === "running" ? (
-                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-600">
-                        <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-                        Agent working…
+                    {/* Description only on the pressed card — capped at ~6 lines
+                     * (text-xs line-height is 1rem), the rest scrolls. */}
+                    {t.id === selectedId && t.description && (
+                      <div className="mt-1 max-h-24 overflow-y-auto overscroll-contain text-xs text-zinc-500">
+                        {t.description}
                       </div>
-                    ) : t.status === "error" ? (
-                      <div className="mt-2 flex items-center gap-2 text-[11px]">
-                        <span className="text-red-500">Failed</span>
-                        <button
-                          className="rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void runTicket(path, t.id);
-                          }}
-                        >
-                          ↻ Retry
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-[11px] text-blue-500/80">
-                        Queued
-                      </div>
-                    ))}
+                    )}
 
-                  {col.id === "review" && (
-                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                      {rejectingId === t.id ? (
-                        <div ref={rejectBoxRef} className="flex items-center gap-1.5">
-                          <input
-                            autoFocus
-                            className="min-w-0 flex-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs outline-none focus:border-red-400"
-                            placeholder="What's wrong?"
-                            value={rejectDrafts[t.id] ?? ""}
-                            onChange={(e) =>
-                              setRejectDrafts((d) => ({ ...d, [t.id]: e.target.value }))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") submitReject(t.id);
-                              if (e.key === "Escape") setRejectingId(null);
-                            }}
-                          />
+                    {col.id === "blocked" && (
+                      <div className="mt-2 text-[11px] text-zinc-400">
+                        ⛔{" "}
+                        {dependenciesOf(graph, t.id)
+                          .filter((d) => !satisfiesDependents(d))
+                          .map((d) => d.title)
+                          .join(", ") || "waiting on dependencies"}
+                      </div>
+                    )}
+
+                    {col.id === "working" &&
+                      (t.status === "running" ? (
+                        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-600">
+                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+                          Agent working…
+                        </div>
+                      ) : t.status === "error" ? (
+                        <div className="mt-2 flex items-center gap-2 text-[11px]">
+                          <span className="text-red-500">Failed</span>
                           <button
-                            className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400"
-                            onClick={() => submitReject(t.id)}
+                            className="rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void runTicket(path, t.id);
+                            }}
                           >
-                            Send
+                            ↻ Retry
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            className="flex-1 rounded-md bg-emerald-100 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200"
-                            title="Approve — mark done"
-                            onClick={() => approveTicket(path, t.id)}
-                          >
-                            ✓
-                          </button>
-                          <button
-                            className="flex-1 rounded-md bg-red-100 py-1 text-xs font-medium text-red-600 hover:bg-red-200"
-                            title="Reject — describe what's wrong"
-                            onClick={() => setRejectingId(t.id)}
-                          >
-                            ✕
-                          </button>
+                        <div className="mt-2 text-[11px] text-blue-500/80">
+                          Queued
                         </div>
-                      )}
-                    </div>
-                  )}
+                      ))}
 
-                  {col.id === "done" && (
-                    <div className="mt-2 text-[11px] text-emerald-600">✓ Done</div>
-                  )}
+                    {col.id === "review" && (
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        {rejectingId === t.id ? (
+                          <div ref={rejectBoxRef} className="flex items-center gap-1.5">
+                            <textarea
+                              autoFocus
+                              ref={rejectInputRef}
+                              rows={1}
+                              className="block min-w-0 flex-1 resize-none rounded-md border border-red-300 bg-white px-2 py-1 text-xs outline-none focus:border-red-400"
+                              placeholder="What's wrong?"
+                              value={rejectDrafts[t.id] ?? ""}
+                              onChange={(e) =>
+                                setRejectDrafts((d) => ({ ...d, [t.id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  submitReject(t.id);
+                                }
+                                if (e.key === "Escape") setRejectingId(null);
+                              }}
+                            />
+                            <button
+                              className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400"
+                              onClick={() => submitReject(t.id)}
+                            >
+                              Send
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              className="flex-1 rounded-md bg-emerald-100 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200"
+                              title="Approve — mark done"
+                              onClick={() => approveTicket(path, t.id)}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              className="flex-1 rounded-md bg-red-100 py-1 text-xs font-medium text-red-600 hover:bg-red-200"
+                              title="Reject — describe what's wrong"
+                              onClick={() => setRejectingId(t.id)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {col.id === "done" && (
+                      <div className="mt-2 text-[11px] text-emerald-600">✓ Done</div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
