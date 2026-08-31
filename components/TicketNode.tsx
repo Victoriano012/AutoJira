@@ -187,20 +187,17 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
               Human
             </span>
           )}
-        </div>
-        {ticket.type === "human_review" ? (
-          readyForReview > 0 && (
+          {ticket.type === "human_review" && readyForReview > 0 && (
             <span
-              className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-medium text-yellow-700"
+              className="text-[10px] font-medium text-zinc-700"
               title={`${readyForReview} sub-ticket${readyForReview === 1 ? "" : "s"} ready for your review`}
             >
               {readyForReview} to review
             </span>
-          )
-        ) : (
-          ticket.subgraph.tickets.length > 0 && (
-            <SubgraphPreview graph={ticket.subgraph} />
-          )
+          )}
+        </div>
+        {ticket.type !== "human_review" && ticket.subgraph.tickets.length > 0 && (
+          <SubgraphPreview graph={ticket.subgraph} />
         )}
         {running ? (
           <span className="flex items-center gap-1.5">
