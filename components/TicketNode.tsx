@@ -161,18 +161,22 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
     selected ? "!opacity-100" : "!opacity-0 group-hover:!opacity-100"
   }`;
 
+  // Resolved once, and published on the node: the drill-in/out flight box wants
+  // the colour this card has *unselected*, and this is the only place that knows
+  // which of the three rules won.
+  const statusBorder = running
+    ? borderByStatus.running
+    : waiting
+      ? borderByStatus.review
+      : borderByStatus[shown];
+
   return (
     <div
+      data-zoom-border={statusBorder}
       className={`group relative w-64 rounded-xl border-2 bg-white p-3 pb-2 shadow-lg shadow-zinc-900/10 ${
         appeared ? "ticket-appear " : ""
       }${nudge ? "ticket-waiting-nudge " : ""}${
-        selected
-          ? "border-violet-500"
-          : running
-            ? borderByStatus.running
-            : waiting
-              ? borderByStatus.review
-              : borderByStatus[shown]
+        selected ? "border-violet-500" : statusBorder
       }`}
     >
       <Handle type="target" position={Position.Left} className={handleClass} />

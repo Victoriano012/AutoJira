@@ -35,17 +35,21 @@ type ProjectNodeType = Node<
 >;
 
 function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
+  // Running before done, as a ticket node orders them: the live state is what
+  // the person needs to see, and a finished project that is running again has
+  // work going on inside it. Published on the node for the same reason as on a
+  // ticket: the flight box wants this colour, not the hover one it would read
+  // off the node you necessarily hovered to click.
+  const statusBorder = data.running
+    ? "border-blue-400"
+    : data.done
+      ? "border-emerald-500"
+      : "border-zinc-300";
   return (
     <div
-      className={`group relative w-64 rounded-xl border-2 bg-white p-3 pt-1.5 shadow-lg shadow-zinc-900/10 ${
-        // Running before done, as a ticket node orders them: the live state is
-        // what the person needs to see, and a finished project that is running
-        // again has work going on inside it.
-        data.running
-          ? "border-blue-400"
-          : data.done
-            ? "border-emerald-500"
-            : "border-zinc-300 hover:border-violet-400"
+      data-zoom-border={statusBorder}
+      className={`group relative w-64 rounded-xl border-2 bg-white p-3 pt-1.5 shadow-lg shadow-zinc-900/10 ${statusBorder}${
+        data.running || data.done ? "" : " hover:border-violet-400"
       }`}
     >
       {data.done && (

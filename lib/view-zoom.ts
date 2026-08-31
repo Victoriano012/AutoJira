@@ -160,16 +160,38 @@ function frameRect(depth: number, panelClosing: boolean): Rect | null {
   };
 }
 
-/** A node's card: where it is, and the status colour of its border. */
+/**
+ * The colour a Tailwind border class paints, resolved by wearing it: an
+ * offscreen probe takes the class and computed style answers. No colour list
+ * lives here — the cards remain the only place the palette is written down.
+ */
+const probed = new Map<string, string>();
+function colorOfClass(cls: string): string {
+  const hit = probed.get(cls);
+  if (hit) return hit;
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:-9999px;top:0;width:0;height:0";
+  probe.className = cls;
+  document.body.append(probe);
+  const color = getComputedStyle(probe).borderTopColor;
+  probe.remove();
+  if (color) probed.set(cls, color);
+  return color;
+}
+
+/** A node's card: where it is, and the status colour of its border — the one it
+ * has unselected and unhovered, which the card publishes as `data-zoom-border`,
+ * since you both select and hover the node you click on your way in here. */
 function cardOf(id: string, narrow = false): Card | null {
   const node = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
   const el = (node?.firstElementChild ?? node) as HTMLElement | null;
   if (!el) return null;
   const r = el.getBoundingClientRect();
   if (!r.width || !r.height) return null;
+  const cls = el.dataset.zoomBorder;
   return {
     rect: { left: r.left, top: r.top, width: r.width, height: r.height },
-    color: getComputedStyle(el).borderTopColor || NEUTRAL,
+    color: (cls && colorOfClass(cls)) || getComputedStyle(el).borderTopColor || NEUTRAL,
     narrow,
   };
 }
