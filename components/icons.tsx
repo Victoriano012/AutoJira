@@ -69,6 +69,16 @@ export function ArrowRightIcon({ size }: { size?: number }) {
   );
 }
 
+/** Two bars: pause the agent working on a ticket. */
+export function PauseIcon({ size }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <line x1="9" y1="4" x2="9" y2="20" />
+      <line x1="15" y1="4" x2="15" y2="20" />
+    </Svg>
+  );
+}
+
 export function StopIcon({ size }: { size?: number }) {
   return (
     <Svg size={size}>

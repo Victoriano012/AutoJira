@@ -2,9 +2,16 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutGraph } from "@/lib/layout";
-import { approveTicket, rejectTicket, runGraph, runTicket } from "@/lib/runner";
+import {
+  approveTicket,
+  rejectTicket,
+  runGraph,
+  runTicket,
+  stopTicket,
+} from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
+import { PauseIcon, PlayIcon, Spinner } from "./icons";
 import {
   contextChain,
   dependenciesOf,
@@ -54,6 +61,9 @@ const COLUMNS: {
 function columnOf(t: Ticket, ready: boolean): ColumnId {
   if (isTicketDone(t)) return "done";
   if (t.status === "review") return "review";
+  // Paused is the person's own block: the card moves out of Working the moment
+  // they press it, without waiting for the agent to wind down.
+  if (t.paused) return "blocked";
   if (t.status === "running" || t.status === "error") return "working";
   return ready ? "working" : "blocked"; // todo
 }
@@ -274,6 +284,34 @@ export default function BoardView() {
     return () => document.removeEventListener("pointerdown", onDown);
   }, [rejectingId]);
 
+  /** Stop the agent and keep the ticket out of the queue until the person
+   * starts it again. The flag is the browser's own field, so it outlives the
+   * reload the server's stop does not know about. */
+  const stopping = useRef(new Set<string>());
+  function pause(ticketId: string) {
+    stopTicket(path, ticketId);
+    // The agent takes a moment to wind down: until its status leaves "running"
+    // the ticket is stopping, not started again.
+    stopping.current.add(ticketId);
+    updateTicket(path, ticketId, (t) => ({ ...t, paused: true }));
+  }
+
+  // A pause only means anything while the ticket waits in the queue. Once it is
+  // running again — the board's Run button, or a graph run, which deliberately
+  // lifts stops — or the agent has carried it on to review, the pause is over.
+  useEffect(() => {
+    for (const t of graph?.tickets ?? []) {
+      if (t.status !== "running") stopping.current.delete(t.id);
+      if (t.paused && t.status !== "todo" && !stopping.current.has(t.id))
+        updateTicket(path, t.id, (x) => ({ ...x, paused: false }));
+    }
+  });
+
+  function resume(ticketId: string) {
+    updateTicket(path, ticketId, (t) => ({ ...t, paused: false }));
+    void runTicket(path, ticketId);
+  }
+
   function submitReject(ticketId: string) {
     const msg = (rejectDrafts[ticketId] ?? "").trim() || DEFAULT_REJECTION;
     setRejectingId(null);
@@ -396,10 +434,17 @@ export default function BoardView() {
   // column stack uses the space right up to the border.
   const frameInset = 3 + path.length * 4 + 2;
 
+  const isReady = (t: Ticket) =>
+    dependenciesOf(graph, t.id).every(satisfiesDependents);
+  const unmetTitles = (t: Ticket) =>
+    dependenciesOf(graph, t.id)
+      .filter((d) => !satisfiesDependents(d))
+      .map((d) => d.title)
+      .join(", ") || "waiting on dependencies";
+
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
-    const ready = dependenciesOf(graph, t.id).every(satisfiesDependents);
-    byColumn.get(columnOf(t, ready))!.push(t);
+    byColumn.get(columnOf(t, isReady(t)))!.push(t);
   }
 
   const cardRef = (id: string) => (el: HTMLDivElement | null) => {
@@ -475,21 +520,60 @@ export default function BoardView() {
                       </div>
                     )}
 
-                    {col.id === "blocked" && (
-                      <div className="mt-2 text-[11px] text-zinc-400">
-                        ⛔{" "}
-                        {dependenciesOf(graph, t.id)
-                          .filter((d) => !satisfiesDependents(d))
-                          .map((d) => d.title)
-                          .join(", ") || "waiting on dependencies"}
-                      </div>
-                    )}
+                    {col.id === "blocked" &&
+                      (t.paused ? (
+                        // Blocked by the person, not by dependencies: it says so
+                        // and offers the way back. Dependencies it still waits on
+                        // outrank that — running it then is not possible.
+                        <div
+                          className="mt-2 flex items-center gap-2 text-[11px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            disabled={!isReady(t) || t.status === "running"}
+                            title={
+                              t.status === "running"
+                                ? "Stopping the agent…"
+                                : isReady(t)
+                                  ? "Run"
+                                  : "Waiting on dependencies"
+                            }
+                            className="flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-zinc-100"
+                            onClick={() => resume(t.id)}
+                          >
+                            <PlayIcon size={9} />
+                            Run
+                          </button>
+                          <span className="text-zinc-400">
+                            {t.status === "running"
+                              ? "Stopping…"
+                              : isReady(t)
+                                ? "Paused"
+                                : `⛔ ${unmetTitles(t)}`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-zinc-400">
+                          ⛔ {unmetTitles(t)}
+                        </div>
+                      ))}
 
                     {col.id === "working" &&
                       (t.status === "running" ? (
-                        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-600">
-                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
-                          Agent working…
+                        // The spinner alone says the agent is on it; pause sits
+                        // beside it, on the right where the eye already is.
+                        <div
+                          className="mt-2 flex items-center justify-end gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            title="Pause"
+                            className="text-zinc-400 hover:text-zinc-700"
+                            onClick={() => pause(t.id)}
+                          >
+                            <PauseIcon size={13} />
+                          </button>
+                          <Spinner className="h-2.5 w-2.5" />
                         </div>
                       ) : t.status === "error" ? (
                         <div className="mt-2 flex items-center gap-2 text-[11px]">
