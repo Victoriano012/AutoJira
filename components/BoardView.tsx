@@ -522,6 +522,11 @@ export default function BoardView() {
       const t = next.get(e.target);
       if (!s || !t) continue;
       const src = graph.tickets.find((x) => x.id === e.source);
+      const tgt = graph.tickets.find((x) => x.id === e.target);
+      // A dependency on or from a finished card has nothing left to say: the
+      // order it enforced already happened. Drawing it only clutters the
+      // board, so the line goes even though the edge stays in the graph.
+      if ((src && isTicketDone(src)) || (tgt && isTicketDone(tgt))) continue;
       const y1 = s.top + s.height / 2 - bRect.top;
       const y2 = t.top + t.height / 2 - bRect.top;
       let d: string;
@@ -587,6 +592,29 @@ export default function BoardView() {
   // the scheduler does: who waits on a file, and who is holding one.
   const claimsOf = (t: Ticket) => fileClaims(graph, t.id, true);
   const blockeesOf = (t: Ticket) => fileBlockees(graph, t.id, true);
+
+  /**
+   * One line per file. The helpers answer per card, so two cards holding the
+   * same file are two answers about one file — on the card that is what a
+   * person reads as the same thing said twice. The line is the file name and
+   * nothing else; which cards, and every file they share, is the hover.
+   */
+  const fileLines = (
+    rows: { file: string; files: string[]; who: Ticket }[],
+    say: (files: string[], names: string[]) => string
+  ) => {
+    const byFile = new Map<string, { files: Set<string>; names: string[] }>();
+    for (const r of rows) {
+      const cur = byFile.get(r.file) ?? { files: new Set<string>(), names: [] };
+      for (const f of r.files) cur.files.add(f);
+      if (!cur.names.includes(r.who.title)) cur.names.push(r.who.title);
+      byFile.set(r.file, cur);
+    }
+    return [...byFile].map(([file, v]) => ({
+      file,
+      hover: say([...v.files], v.names),
+    }));
+  };
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
@@ -691,18 +719,25 @@ export default function BoardView() {
                 // Files this card waits for, and files it holds that somebody
                 // else waits for. Both lists sit in the card's bottom-left, with
                 // the card's own control right-aligned on the last of them.
-                const claims = claimsOf(t);
-                // One line per ticket, not per file: three shared files are one
-                // reason. Both cards name the same file; the rest are on hover.
-                const heldLines = blockeesOf(t).map((b) => (
+                const claims = fileLines(
+                  claimsOf(t).map((c) => ({ file: c.file, files: c.files, who: c.by })),
+                  (files, names) =>
+                    `Waiting for ${files.join(", ")}, held by ${names.join(", ")}`
+                );
+                const heldLines = fileLines(
+                  blockeesOf(t).map((b) => ({ file: b.file, files: b.files, who: b.who })),
+                  (files, names) =>
+                    `${names.join(", ")} ${
+                      names.length > 1 ? "are" : "is"
+                    } waiting for ${files.join(", ")}`
+                ).map((r) => (
                   <div
-                    key={b.who.id}
-                    title={`${b.who.title} is waiting for ${b.files.join(", ")}`}
+                    key={r.file}
+                    title={r.hover}
                     className="flex min-w-0 items-center gap-1 text-zinc-400"
                   >
                     <HandIcon />
-                    <span className="truncate">{b.file}</span>
-                    <span className="truncate opacity-80">{b.who.title}</span>
+                    <span className="truncate">{r.file}</span>
                   </div>
                 ));
                 return (
@@ -754,13 +789,8 @@ export default function BoardView() {
                             </div>
                           )}
                           {claims.map((c) => (
-                            <div
-                              key={c.by.id}
-                              title={`Waiting for ${c.files.join(", ")}, held by ${c.by.title}`}
-                              className="flex min-w-0 items-center gap-1"
-                            >
-                              <span className="truncate">⛔ {c.file}</span>
-                              <span className="truncate opacity-80">{c.by.title}</span>
+                            <div key={c.file} className="truncate" title={c.hover}>
+                              ⛔ {c.file}
                             </div>
                           ))}
                           {heldLines}
