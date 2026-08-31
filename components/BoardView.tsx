@@ -507,10 +507,6 @@ export default function BoardView() {
                         )}
                       </div>
                     )}
-
-                    {col.id === "done" && (
-                      <div className="mt-2 text-[11px] text-emerald-600">✓ Done</div>
-                    )}
                   </div>
                 </div>
               ))}
