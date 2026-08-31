@@ -76,7 +76,7 @@ function rewriteAt(
   };
 }
 
-export const useStore = create<AppState>()(
+const freshStore = create<AppState>()(
   persist(
     (set) => ({
       projectId: null,
@@ -208,3 +208,23 @@ export const useStore = create<AppState>()(
     }
   )
 );
+
+/**
+ * One store per window, kept across module re-evaluations.
+ *
+ * `next dev` re-evaluates this module whenever anything it imports changes —
+ * which, in a repo where agents are editing the app while it is open, is all
+ * the time. A second store would be a *different* store: the mounted
+ * components would switch to it empty, so the open project reads as unloaded
+ * and the whole view blinks back through "Loading project…" — the board and
+ * everything typed into it gone for no reason the person can see — while the
+ * live feed carries on writing statuses into the store nobody is rendering,
+ * leaving the tab deaf until a reload. Reusing the one on `window` makes a
+ * refresh of the code just that.
+ */
+const win =
+  typeof window === "undefined"
+    ? null
+    : (window as unknown as { __autojiraStore?: typeof freshStore });
+export const useStore = win?.__autojiraStore ?? freshStore;
+if (win) win.__autojiraStore = useStore;

@@ -61,6 +61,13 @@ export function isTicketRunLive(path: string[], ticketId: string): boolean {
 }
 
 let flushProject: () => Promise<void> = async () => {};
+let pokeStream: () => void = () => {};
+
+/** sync.ts registers its feed check here: a person's action is the moment they
+ * are watching for a result, so it is the moment to notice a dead feed. */
+export function setStreamPoke(fn: () => void): void {
+  pokeStream = fn;
+}
 
 /** sync.ts registers its autosave flush here: the server runs from its own copy
  * of the project, so pending edits go first. */
@@ -74,6 +81,7 @@ async function call(
 ): Promise<void> {
   const dir = useStore.getState().projectId;
   if (!dir) return;
+  pokeStream();
   await flushProject();
   try {
     const res = await fetch("/api/runs", {

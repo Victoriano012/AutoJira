@@ -32,7 +32,9 @@ export async function GET(req: Request) {
       const unsubscribe = subscribe(dir, (e: ProjectEvent) =>
         e.type === "runs" ? send({ type: "runs", runs: runs.runState(dir) }) : send(e)
       );
-      const ping = setInterval(() => send({ type: "ping" }), 25_000);
+      // Often enough that the browser can tell a live feed from one that died
+      // without saying so — its watchdog counts missed pings (see sync.ts).
+      const ping = setInterval(() => send({ type: "ping" }), 10_000);
       ping.unref?.();
 
       cleanup = () => {

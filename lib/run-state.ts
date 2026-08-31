@@ -1,4 +1,4 @@
-import { Project, Ticket, TicketGraph, TicketStatus } from "./types";
+import type { Project, Ticket, TicketGraph, TicketStatus } from "./types";
 
 /**
  * Single-writer discipline between the browser and the server process.
@@ -38,9 +38,26 @@ function mergeGraph(edit: TicketGraph, run: TicketGraph): TicketGraph {
   };
 }
 
+function ticketCount(g: TicketGraph): number {
+  return g.tickets.reduce((n, t) => n + 1 + ticketCount(t.subgraph), 0);
+}
+
 /** Structure and user edits from `edit`, run-produced fields from `run`. */
 export function mergeRunState(edit: Project, run: Project): Project {
-  return { ...edit, graph: mergeGraph(edit.graph, run.graph) };
+  const merged = { ...edit, graph: mergeGraph(edit.graph, run.graph) };
+  if (process.env.NODE_ENV !== "production") {
+    // The one invariant behind "my tickets keep disappearing": incoming server
+    // state may only change run fields. A ticket the person made is theirs
+    // whether or not the server has ever heard of it.
+    const before = ticketCount(edit.graph);
+    const after = ticketCount(merged.graph);
+    if (before !== after) {
+      console.error(
+        `mergeRunState changed the ticket set: ${before} in, ${after} out`
+      );
+    }
+  }
+  return merged;
 }
 
 /** A person's deliberate change to a run field, sent alongside an autosave. */

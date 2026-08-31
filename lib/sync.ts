@@ -1,6 +1,11 @@
 "use client";
 
-import { applyRunState, RunStateSnapshot, setProjectFlush } from "./runner";
+import {
+  applyRunState,
+  RunStateSnapshot,
+  setProjectFlush,
+  setStreamPoke,
+} from "./runner";
 import { useStore } from "./store";
 import { mergeRunState, runEdits } from "./run-state";
 import { LogEntry, Project, Ticket } from "./types";
@@ -79,6 +84,9 @@ let lastEvent = 0;
  * against, so the browser can tell its own deliberate changes (Reopen, a chat
  * session) apart from run output it merely received. */
 let base: Project | null = null;
+/** Revalidate the feed now — set by `openStream`, called before every action a
+ * person takes (see `setStreamPoke`). */
+let poke: () => void = () => {};
 /** True while applying server state, so autosave does not echo it back. */
 let applying = false;
 
@@ -114,13 +122,16 @@ function openStream(dir: string): void {
 
   // EventSource retries a dropped connection by itself, but not every way a
   // feed dies looks like that. A non-200 — a 404 for a project the server has
-  // not loaded, a 500 while the route recompiles — closes it for good, and a
-  // connection that dies quietly (sleep, a proxy) just stops delivering with no
-  // error at all. Either way the tab goes deaf: statuses stop arriving and only
-  // a reload brings it back, which is what "I rejected it and it only moved
-  // after a refresh" looks like. So reopen a closed feed, and treat silence as
-  // closed — the server pings every 25s, and a new connection opens with a
-  // snapshot, so one reconnect catches up on everything missed.
+  // not loaded, a 500 while the route recompiles — closes it for good; a
+  // request aborted mid-stream (dev recompiles the route under an open one)
+  // leaves it "connecting" and never comes back; and a connection that dies
+  // quietly (sleep, a proxy) just stops delivering with no error at all. Every
+  // one of them leaves the tab deaf: statuses stop arriving and only a reload
+  // brings it back, which is what "it only moved after I refreshed" looks like.
+  // So own the retry — any error reopens the feed, and so does silence, since
+  // the server pings every 10s, and so does the person's next click (`poke`).
+  // A new connection opens with a snapshot, so one reconnect catches up on
+  // everything missed.
   const reconnect = () => {
     if (source !== es) return;
     // Not `closeStream`: the runs are still running, so the run state stays as
@@ -132,14 +143,18 @@ function openStream(dir: string): void {
     reopenTimer = setTimeout(() => {
       reopenTimer = null;
       if (useStore.getState().projectId === dir) openStream(dir);
-    }, 3000);
+    }, 2000);
   };
-  es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED) reconnect();
+  es.onerror = reconnect;
+  poke = () => {
+    // A person just asked the server for something and is watching for the
+    // answer: no reason to make them wait out the watchdog for a feed that
+    // stopped delivering.
+    if (source === es && Date.now() - lastEvent > 12_000) reconnect();
   };
   watchdog = setInterval(() => {
-    if (Date.now() - lastEvent > 60_000) reconnect();
-  }, 15_000);
+    if (Date.now() - lastEvent > 25_000) reconnect();
+  }, 5_000);
 
   es.onmessage = (ev) => {
     if (source !== es) return;
@@ -175,7 +190,12 @@ function openStream(dir: string): void {
 // ---- autosave ------------------------------------------------------------
 
 let timer: ReturnType<typeof setTimeout> | null = null;
-let started = false;
+/** On `window`, not in the module: a re-evaluated copy of this module (see the
+ * note in store.ts) must not open a second feed and a second autosave beside
+ * the ones already running against the same store. */
+const live = globalThis as unknown as {
+  __autojiraSync?: { flush: () => Promise<void>; poke: () => void };
+};
 
 /** Push the open project now. Run-field changes the person made since the last
  * server state travel as explicit edits; everything else is plain structure. */
@@ -201,9 +221,17 @@ export function flushProject(): Promise<void> {
 
 /** Debounced push of the open project to its .autojira dir on every change. */
 export function startAutosave(): void {
-  if (started) return;
-  started = true;
+  if (live.__autojiraSync) {
+    // A re-evaluated copy of this module: the feed and the autosave already
+    // running own the state, so point the runner back at them instead of
+    // starting a second pair beside them.
+    setProjectFlush(live.__autojiraSync.flush);
+    setStreamPoke(live.__autojiraSync.poke);
+    return;
+  }
+  live.__autojiraSync = { flush: flushProject, poke: () => poke() };
   setProjectFlush(flushProject);
+  setStreamPoke(() => poke());
   let prevProject = useStore.getState().project;
   let prevId = useStore.getState().projectId;
   if (prevId) openStream(prevId);

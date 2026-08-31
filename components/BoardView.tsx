@@ -26,6 +26,7 @@ import {
   satisfiesDependentsOnBoard,
   Ticket,
   ticketAtPath,
+  TicketStatus,
 } from "@/lib/types";
 
 type ColumnId = BoardColumn;
@@ -306,22 +307,27 @@ export default function BoardView() {
   const rejectBoxRef = useRef<HTMLDivElement>(null);
   const rejectInputRef = useRef<HTMLTextAreaElement>(null);
   const rejectDraft = rejectingId ? (rejectDrafts[rejectingId] ?? "") : "";
-  /** Rejections the server has not answered yet, by ticket id → when they were
-   * sent. The person is done with these cards, so they leave review at once;
-   * the server decides where they land. */
-  const [rejected, setRejected] = useState<Record<string, number>>({});
+  /** The ✓ and ✕ the server has not answered yet: ticket id → the status the
+   * person's answer will give it, the status it had when they gave it, and
+   * when. Both answers are the person's own decision, so the card leaves review
+   * on the click and the round-trip only confirms it. */
+  const [pending, setPending] = useState<
+    Record<string, { becomes: TicketStatus; was: TicketStatus; at: number }>
+  >({});
+  const hold = (t: Ticket, becomes: TicketStatus) =>
+    setPending((p) => ({ ...p, [t.id]: { becomes, was: t.status, at: Date.now() } }));
 
-  // The hold lasts exactly until the truth arrives — the card's status moves
-  // off review — and no longer than a few seconds regardless, so a status that
-  // never comes leaves the card where the server really has it rather than
-  // pinned in the wrong column.
+  // A hold lasts exactly until the truth arrives — the card's status moves off
+  // the one it was answered in — and no longer than a few seconds regardless,
+  // so an answer that never reaches the server leaves the card where the
+  // server really has it rather than pinned in the wrong column.
   useEffect(() => {
-    const ids = Object.keys(rejected);
+    const ids = Object.keys(pending);
     if (ids.length === 0) return;
     const drop = (stale: string[]) => {
       if (stale.length === 0) return;
-      setRejected((r) => {
-        const next = { ...r };
+      setPending((p) => {
+        const next = { ...p };
         for (const id of stale) delete next[id];
         return next;
       });
@@ -329,15 +335,15 @@ export default function BoardView() {
     drop(
       ids.filter((id) => {
         const t = graph?.tickets.find((x) => x.id === id);
-        return !t || t.status !== "review";
+        return !t || t.status !== pending[id].was;
       })
     );
     const timer = setTimeout(
-      () => drop(ids.filter((id) => Date.now() - rejected[id] > 10_000)),
+      () => drop(ids.filter((id) => Date.now() - pending[id].at > 10_000)),
       10_000
     );
     return () => clearTimeout(timer);
-  }, [rejected, graph]);
+  }, [pending, graph]);
 
   // Grows with the text up to two lines, then scrolls — same as ChatInput.
   // Reopening on another ticket re-runs it, so a restored multi-line draft
@@ -389,19 +395,26 @@ export default function BoardView() {
     void runTicket(path, ticketId);
   }
 
-  function submitReject(ticketId: string) {
-    const msg = (rejectDrafts[ticketId] ?? "").trim() || DEFAULT_REJECTION;
+  function submitReject(t: Ticket) {
+    const msg = (rejectDrafts[t.id] ?? "").trim() || DEFAULT_REJECTION;
     setRejectingId(null);
-    setRejectDrafts((d) => ({ ...d, [ticketId]: "" }));
-    setRejected((r) => ({ ...r, [ticketId]: Date.now() }));
-    void rejectTicket(path, ticketId, msg).catch(() =>
+    setRejectDrafts((d) => ({ ...d, [t.id]: "" }));
+    // Back to its agent: Working, or Blocked if another card holds its file.
+    hold(t, "todo");
+    void rejectTicket(path, t.id, msg).catch(() =>
       // The rejection never reached the server: the card is still the person's.
-      setRejected((r) => {
-        const next = { ...r };
-        delete next[ticketId];
+      setPending((p) => {
+        const next = { ...p };
+        delete next[t.id];
         return next;
       })
     );
+  }
+
+  /** The ✓: the person has signed the card off, so it is Done from this click. */
+  function submitApprove(t: Ticket) {
+    hold(t, "done");
+    approveTicket(path, t.id);
   }
 
   // ---- FLIP column-move animation + dependency lines ----
@@ -534,12 +547,22 @@ export default function BoardView() {
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
   for (const t of graph.tickets) {
-    // A card whose rejection is on its way to the server is going back to its
-    // agent, so it is placed as the todo it is about to become: Working, or
-    // Blocked if another card holds its file. It leaves review on the click,
-    // not a round-trip later.
-    const asked = rejected[t.id] ? { ...t, status: "todo" as const } : t;
+    // A card whose ✓ or ✕ is still on its way to the server is placed as the
+    // status it is about to have, so it leaves review on the click rather than
+    // a round-trip later.
+    const p = pending[t.id];
+    const asked = p ? { ...t, status: p.becomes } : t;
     byColumn.get(boardColumn(graph, asked, true))!.push(t);
+  }
+  // The four columns are the whole board: every card is in exactly one of them,
+  // so a card that renders nowhere is a bug and not a state to discover from a
+  // person telling you their tickets disappeared.
+  if (process.env.NODE_ENV !== "production") {
+    const placed = COLUMNS.reduce((n, c) => n + byColumn.get(c.id)!.length, 0);
+    if (placed !== graph.tickets.length)
+      console.error(
+        `BoardView: ${graph.tickets.length} cards, ${placed} placed in columns`
+      );
   }
   const doneKey = byColumn
     .get("done")!
@@ -776,14 +799,14 @@ export default function BoardView() {
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" && !e.shiftKey) {
                                   e.preventDefault();
-                                  submitReject(t.id);
+                                  submitReject(t);
                                 }
                                 if (e.key === "Escape") setRejectingId(null);
                               }}
                             />
                             <button
                               className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400"
-                              onClick={() => submitReject(t.id)}
+                              onClick={() => submitReject(t)}
                             >
                               Send
                             </button>
@@ -793,7 +816,7 @@ export default function BoardView() {
                             <button
                               className="flex-1 rounded-md bg-emerald-100 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200"
                               title="Approve — mark done"
-                              onClick={() => approveTicket(path, t.id)}
+                              onClick={() => submitApprove(t)}
                             >
                               ✓
                             </button>
