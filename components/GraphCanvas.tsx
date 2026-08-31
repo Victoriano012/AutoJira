@@ -26,6 +26,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
+import { useBackSwipe } from "./useBackSwipe";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
 
@@ -113,46 +114,10 @@ export function GraphCanvas() {
   const { setPath, select, addEdge, removeEdge, removeTicket, updateTicket } =
     useStore.getState();
 
-  // Two-finger horizontal swipe (wheel events with dominant deltaX) navigates
-  // back one graph layer instead of zooming/panning. Native capture-phase,
-  // non-passive listener so we can preventDefault (kills the browser history
-  // swipe) and stop React Flow's own wheel handling for the horizontal axis.
+  // Swipe back one layer — shared with the human-review board, which renders
+  // instead of this canvas and needs the same gesture.
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const swipe = useRef({ acc: 0, locked: false, last: -Infinity });
-  useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) return; // pinch zoom stays as is
-      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical scroll stays as is
-      e.preventDefault();
-      e.stopPropagation();
-      const s = swipe.current;
-      // A ≥150ms gap since the previous horizontal event marks a new gesture.
-      // Deciding at event time (not with a trailing quiet timer) matters: a
-      // locked-out swipe must not push the release further into the future,
-      // or quick successive swipes chain-extend the lock indefinitely.
-      if (e.timeStamp - s.last > 150) {
-        s.acc = 0;
-        s.locked = false;
-      }
-      s.last = e.timeStamp;
-      if (s.locked) return; // inertia tail of a swipe that already navigated
-      s.acc += e.deltaX;
-      // The sign of deltaX for a physical right-swipe flips with the user's
-      // scroll-direction setting, so a strong horizontal accumulation in
-      // either direction means "go back" — one gesture, one action.
-      if (Math.abs(s.acc) > 80) {
-        s.locked = true;
-        s.acc = 0;
-        const st = useStore.getState();
-        if (st.path.length > 0) st.setPath(st.path.slice(0, -1));
-        else st.closeProject();
-      }
-    };
-    el.addEventListener("wheel", onWheel, { capture: true, passive: false });
-    return () => el.removeEventListener("wheel", onWheel, { capture: true });
-  }, []);
+  useBackSwipe(wrapperRef);
 
   // Selecting is held back for the double-click window (see the constant above);
   // deselecting has no such problem and stays immediate.

@@ -13,6 +13,7 @@ import {
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
 import { HandIcon, NoteIcon, Spinner, StopSquare } from "./icons";
+import { useBackSwipe } from "./useBackSwipe";
 import {
   BoardColumn,
   boardColumn,
@@ -318,6 +319,12 @@ export default function BoardView() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
   const { updateGraph, updateTicket, setPath } = useStore.getState();
+
+  // The same swipe-back gesture the canvas has: a board is a view like any
+  // other, and it is the *only* thing rendered at its level, so this is the one
+  // listener while it is open.
+  const swipeRef = useRef<HTMLDivElement>(null);
+  useBackSwipe(swipeRef);
 
   // Card selection is local to the board: it only opens the card's agent
   // conversation. Routing it through the store's selection would also open the
@@ -919,7 +926,11 @@ export default function BoardView() {
     // Cards stop this click, so anything else — column background, headers,
     // the footer button, the request bar — lands here and clears the selection
     // while still doing whatever it does itself.
-    <div className="flex h-full w-full flex-col" onClick={() => setSelectedId(null)}>
+    <div
+      ref={swipeRef}
+      className="flex h-full w-full flex-col overscroll-x-none"
+      onClick={() => setSelectedId(null)}
+    >
       {/* columns */}
       <div
         ref={boardRef}
