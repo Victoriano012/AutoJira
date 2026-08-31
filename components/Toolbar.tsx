@@ -4,13 +4,20 @@ import { useState, useSyncExternalStore } from "react";
 import { autoLayout } from "@/lib/layout";
 import { isGraphRunning, runGraph, stopGraph, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
-import { graphAtPath, isTicketDone, newTicket } from "@/lib/types";
+import {
+  dependenciesOf,
+  graphAtPath,
+  isTicketDone,
+  isTicketWaiting,
+  newTicket,
+  satisfiesDependents,
+} from "@/lib/types";
 import ArrowLeftIcon from "./ArrowLeftIcon";
 import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
 import { LayoutIcon, PlayIcon, PlusIcon, Spinner, StopIcon } from "./icons";
 import PopulateModal from "./PopulateModal";
-import { useRunAck } from "./useRunAck";
+import { ackKey, ackTickets, useRunAck } from "./useRunAck";
 import SettingsModal from "./SettingsModal";
 
 export default function Toolbar() {
@@ -66,6 +73,16 @@ export default function Toolbar() {
 
   const doneCount = graph?.tickets.filter(isTicketDone).length ?? 0;
   const total = graph?.tickets.length ?? 0;
+
+  // Tickets this run can only park on again: they are already waiting on a
+  // human, so nothing they render from will change and they need the beat of
+  // Running feedback themselves.
+  const waitingKeys = () =>
+    (graph?.tickets ?? [])
+      .filter((t) =>
+        isTicketWaiting(t, dependenciesOf(graph!, t.id).every(satisfiesDependents))
+      )
+      .map((t) => ackKey(path, t.id));
 
   function handleAddTicket() {
     const t = newTicket({ position: null });
@@ -168,6 +185,7 @@ export default function Toolbar() {
             className="rounded-lg px-2 py-1.5 text-emerald-600 hover:bg-zinc-200 hover:text-emerald-500 disabled:opacity-50"
             onClick={() => {
               ack();
+              ackTickets(waitingKeys());
               void runGraph(path);
             }}
             disabled={total === 0}

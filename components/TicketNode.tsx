@@ -13,6 +13,7 @@ import {
 } from "@/lib/types";
 import { Handle, NodeProps, Position, type Node } from "@xyflow/react";
 import { Spinner } from "./icons";
+import { ackKey, useTicketAck } from "./useRunAck";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 export type TicketNodeType = Node<
@@ -84,21 +85,28 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   // The two states are derived, not read off the raw status: a ticket with a
   // subgraph stays "running" while its scheduler drives it, even once every
   // agent inside has stopped and only the human can move things on.
-  const running = isTicketRunning(ticket);
+  // …plus the beat a graph run marks this ticket with when the run has nothing
+  // to do here but park on it again (a direct click on the play button below
+  // never does this — it either really runs, or the state speaks for itself).
+  const swept = useTicketAck(ackKey(path, ticket.id));
+  const running = isTicketRunning(ticket) || swept;
   const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
 
-  // One-shot nudge on the transition into Waiting — a ticket already waiting
-  // when you arrive sits still, and it never repeats while it waits.
-  const wasWaiting = useRef(waiting);
+  // One-shot nudge, either on the transition into Waiting or at the end of
+  // that swept beat — a ticket parked on a human is usually already Waiting
+  // when the run reaches it, and the nudge is the whole point of the feedback.
+  // It never repeats while the ticket sits there.
+  const was = useRef({ waiting, swept });
   const [nudge, setNudge] = useState(false);
   useEffect(() => {
-    const entered = waiting && !wasWaiting.current;
-    wasWaiting.current = waiting;
+    const entered =
+      waiting && (!was.current.waiting || (was.current.swept && !swept));
+    was.current = { waiting, swept };
     if (!entered) return;
     setNudge(true);
     const t = setTimeout(() => setNudge(false), 300);
     return () => clearTimeout(t);
-  }, [waiting]);
+  }, [waiting, swept]);
 
   // Running a human-review ticket opens its kanban board (the board is the
   // human's interface to that work); the subgraph agents start underneath.
