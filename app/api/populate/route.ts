@@ -8,7 +8,7 @@ import path from "path";
 export const maxDuration = 300;
 
 // Runs through the Agent SDK (Claude Code harness) rather than the raw API so
-// it uses the same auth as /api/agent — including subscription (OAuth) auth.
+// it uses the same auth as the ticket runs — including subscription (OAuth) auth.
 const GRAPH_SCHEMA = {
   type: "object",
   properties: {
