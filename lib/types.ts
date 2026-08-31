@@ -28,10 +28,6 @@ export interface Ticket {
   title: string;
   description: string;
   type: TicketType;
-  /** human_review only. false = non-blocking: dependents may start as soon as
-   * the AI work is finished; the agent branches off in git so the human can
-   * keep testing (and get fixes on) the review ticket's branch. Default true. */
-  blocking?: boolean;
   status: TicketStatus;
   /** Context files inherited by everything in this ticket's subgraph. */
   attachments?: Attachment[];
@@ -208,16 +204,11 @@ export function isTicketDone(t: Ticket): boolean {
   return t.status === "done";
 }
 
-/** Whether dependents of this ticket may start. Done always satisfies; a
- * non-blocking human-review ticket satisfies as soon as the AI work under it is
- * finished — a leaf when it reaches "review", a board when every card is done —
- * without waiting for the human's approval. */
+/** Whether dependents of this ticket may start: only once it is done. A
+ * human-review ticket therefore holds its dependents until the person
+ * approves it. */
 export function satisfiesDependents(t: Ticket): boolean {
-  if (isTicketDone(t)) return true;
-  if (t.type !== "human_review" || t.blocking !== false) return false;
-  return t.subgraph.tickets.length > 0
-    ? t.subgraph.tickets.every(isTicketDone)
-    : t.status === "review";
+  return isTicketDone(t);
 }
 
 /** An agent is genuinely at work at or beneath this ticket. A ticket with a

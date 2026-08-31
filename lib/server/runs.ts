@@ -110,15 +110,9 @@ function inheritedAttachments(
 function buildPrompt(project: Project, path: string[], ticket: Ticket): string {
   const g = graphAtPath(project.graph, path)!;
   const deps = dependenciesOf(g, ticket.id).filter(satisfiesDependents);
-  const pendingReviewDeps = deps.filter((d) => !isTicketDone(d));
   const ctx = contextChain(project, path);
   const crumb = ctx.slice(1).map((l) => l.title);
   const parentContext = ctx.slice(1).filter((l) => l.description);
-  const slug = ticket.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
 
   const lines = [
     `You are an autonomous engineer working on the project "${project.name}" inside the current working directory. Do the work described by the ticket below directly in this directory.`,
@@ -129,17 +123,10 @@ function buildPrompt(project: Project, path: string[], ticket: Ticket): string {
         parentContext.map((l) => `- ${l.title}: ${l.description}`).join("\n"),
     deps.length > 0 &&
       `\nCompleted tickets this one depends on:\n` +
-        deps
-          .map(
-            (d) =>
-              `- ${d.title}${isTicketDone(d) ? "" : " (finished, but still under human review — it may receive fixes)"}: ${d.resultSummary ?? "(done)"}`
-          )
-          .join("\n"),
+        deps.map((d) => `- ${d.title}: ${d.resultSummary ?? "(done)"}`).join("\n"),
     `\n## Ticket: ${ticket.title}\n${ticket.description || "(no further description)"}`,
-    pendingReviewDeps.length > 0 &&
-      `\nIMPORTANT — git branching: work you depend on is still under human review on the current branch. If the workspace is a git repository, create and switch to a new branch "autojira/${slug}" off the current state BEFORE making any changes, so review fixes can land on the previous branch independently. Mention the branch you worked on in your final summary.`,
     ticket.type === "human_review"
-      ? `\nA human will review this ticket when you finish. If the workspace is a git repository, commit your work when done (one commit, message = ticket title) and mention the branch name in your summary. End your reply with (1) a 2-4 sentence summary of what you did and (2) a short checklist of what the human should test.`
+      ? `\nA human will review this ticket when you finish. If the workspace is a git repository, commit your work when done (one commit, message = ticket title). End your reply with (1) a 2-4 sentence summary of what you did and (2) a short checklist of what the human should test.`
       : `\nWork autonomously without asking questions. If the workspace is a git repository, commit your work when done (one commit, message = ticket title). End your reply with a 2-4 sentence summary of what you did, so dependent tickets can build on it.`,
   ];
   return lines.filter(Boolean).join("\n");
@@ -358,8 +345,8 @@ export async function rejectTicket(
   }
 
   await sendFeedback(dir, path, ticketId, message);
-  // A fixed non-blocking review satisfies dependents again — restart the
-  // scheduler if this graph's run is still active.
+  // The reset downstream tickets are runnable again once the fix lands —
+  // restart the scheduler if this graph's run is still active.
   if (registry.active.has(graphScope(dir, path))) void runGraph(dir, path, true);
   else autoRun(dir, path);
 }

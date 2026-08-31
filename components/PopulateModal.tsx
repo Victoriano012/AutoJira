@@ -29,7 +29,6 @@ interface GeneratedTicket {
   title: string;
   description: string;
   type: TicketType;
-  blocking: boolean;
   dependsOn: number[];
 }
 
@@ -135,7 +134,6 @@ export default function PopulateModal({ onClose }: { onClose: () => void }) {
           title: g.title,
           description: g.description,
           type: g.type,
-          blocking: g.type === "human_review" ? g.blocking : true,
         })
       );
       const edges: GraphEdge[] = [];

@@ -20,12 +20,10 @@ const GRAPH_SCHEMA = {
           title: { type: "string" },
           description: { type: "string" },
           type: { type: "string", enum: ["ai", "human_review"] },
-          // human_review only: false = dependents may start before approval
-          blocking: { type: "boolean" },
           // indexes into this array of tickets that must complete first
           dependsOn: { type: "array", items: { type: "integer" } },
         },
-        required: ["title", "description", "type", "blocking", "dependsOn"],
+        required: ["title", "description", "type", "dependsOn"],
         additionalProperties: false,
       },
     },
@@ -66,8 +64,7 @@ export async function POST(req: Request) {
 - Each ticket's description tells the agent exactly what to build/do and how it fits the whole.
 - dependsOn lists the indexes (0-based, into your tickets array) of tickets that must be finished first. Only real dependencies — keep the graph as parallel as possible. No cycles.
 - Order the array so dependencies come before dependents.
-- Use type "human_review" for the few tickets where a human should test the result and give feedback (e.g. after a first runnable version, before deployment). Use type "ai" for everything else.
-- blocking: for human_review tickets, true if dependent work must wait for the human's approval, false if dependents can safely continue in parallel (on a git branch) while the human reviews. For "ai" tickets always set true.`,
+- Use type "human_review" for the few tickets where a human should test the result and give feedback (e.g. after a first runnable version, before deployment). Use type "ai" for everything else. A human_review ticket holds its dependents until the person approves it.`,
   ]
     .filter(Boolean)
     .join("\n");
