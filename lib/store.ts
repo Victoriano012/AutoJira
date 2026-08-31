@@ -39,6 +39,20 @@ interface AppState {
   appendLog: (path: string[], id: string, entry: LogEntry) => void;
 }
 
+/** Cards on a human ticket's kanban board are always leaves: a person's review
+ * must never hide another board inside it. Every graph edit passes through
+ * `rewriteAt`, so the invariant is enforced there — where a subgraph would be
+ * created — rather than by hiding buttons in whichever UI could reach it. */
+function asBoard(g: TicketGraph): TicketGraph {
+  if (!g.tickets.some((t) => t.subgraph.tickets.length > 0)) return g;
+  return {
+    ...g,
+    tickets: g.tickets.map((t) =>
+      t.subgraph.tickets.length > 0 ? { ...t, subgraph: emptyGraph() } : t
+    ),
+  };
+}
+
 function rewriteAt(
   g: TicketGraph,
   path: string[],
@@ -48,9 +62,16 @@ function rewriteAt(
   const [head, ...rest] = path;
   return {
     ...g,
-    tickets: g.tickets.map((t) =>
-      t.id === head ? { ...t, subgraph: rewriteAt(t.subgraph, rest, fn) } : t
-    ),
+    tickets: g.tickets.map((t) => {
+      if (t.id !== head) return t;
+      // A human ticket's subgraph is its kanban board (see `asBoard`): a write
+      // aimed *inside* one of its cards is dropped, and a write to the board
+      // itself is normalised, so no edit can ever nest a board in a card.
+      const board = t.type === "human_review";
+      if (board && rest.length > 0) return t;
+      const subgraph = rewriteAt(t.subgraph, rest, fn);
+      return { ...t, subgraph: board ? asBoard(subgraph) : subgraph };
+    }),
   };
 }
 

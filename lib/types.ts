@@ -36,6 +36,10 @@ export interface Ticket {
   /** Context files inherited by everything in this ticket's subgraph. */
   attachments?: Attachment[];
   position: { x: number; y: number } | null;
+  /** Nested tickets. A human_review ticket's subgraph is its kanban board, and
+   * the cards on it are always leaves: a review must never hide another board
+   * inside it, so nothing may give a card a subgraph (enforced in the store's
+   * rewriteAt, which every graph edit goes through). */
   subgraph: TicketGraph;
   sessionId?: string; // Claude session, kept so review feedback resumes the same context
   /** Side chat with this ticket's main agent — the conversation resumes
@@ -46,6 +50,9 @@ export interface Ticket {
   boardSessionId?: string;
   log: LogEntry[];
   resultSummary?: string;
+  /** Stopped by the person, not by dependencies: it stays out of the queue and
+   * shows a Run button until they start it again. */
+  paused?: boolean;
 }
 
 export interface TicketGraph {
@@ -125,6 +132,7 @@ export function newTicket(partial?: Partial<Ticket>): Ticket {
     position: null,
     subgraph: emptyGraph(),
     log: [],
+    paused: false,
     ...partial,
   };
 }
