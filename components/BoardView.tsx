@@ -320,26 +320,42 @@ export default function BoardView() {
       const t = next.get(e.target);
       if (!s || !t) continue;
       const src = graph.tickets.find((x) => x.id === e.source);
-      let x1: number, x2: number;
-      if (s.right + 12 < t.left) {
-        x1 = s.right - bRect.left;
-        x2 = t.left - bRect.left;
-      } else if (t.right + 12 < s.left) {
-        x1 = s.left - bRect.left;
-        x2 = t.right - bRect.left;
-      } else {
-        // same column: bow out to the right
-        x1 = s.right - bRect.left;
-        x2 = t.right - bRect.left;
-      }
       const y1 = s.top + s.height / 2 - bRect.top;
       const y2 = t.top + t.height / 2 - bRect.top;
-      const off = Math.min(Math.max(Math.abs(x2 - x1) / 2, 24), 80);
-      const c1 = x1 + (x2 >= x1 ? off : -off);
-      const c2 = x2 + (x2 >= x1 ? -off : off);
+      let d: string;
+      if (s.right + 12 < t.left || t.right + 12 < s.left) {
+        const forward = s.right + 12 < t.left;
+        const x1 = (forward ? s.right : s.left) - bRect.left;
+        const x2 = (forward ? t.left : t.right) - bRect.left;
+        const off = Math.min(Math.max(Math.abs(x2 - x1) / 2, 24), 80);
+        const c1 = x1 + (x2 >= x1 ? off : -off);
+        const c2 = x2 + (x2 >= x1 ? -off : off);
+        d = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
+      } else {
+        // Same column: both anchors would sit on the same edges, so a plain
+        // curve folds flat across the cards. Keep the cross-column
+        // convention — out of the source's right edge, into the target's left
+        // edge pointing right — and route the link around the stack instead:
+        // down the gutter, back across through the free gap beside the target.
+        const x1 = s.right - bRect.left;
+        const x2 = t.left - bRect.left;
+        const xr = x1 + 13; // middle of the gutter on either side of the column
+        const xl = x2 - 13;
+        // The 8px gap next to the target, on the side the link arrives from,
+        // is the one horizontal band that never has a card in it.
+        const yc = y2 > y1 ? t.top - bRect.top - 4 : t.top + t.height - bRect.top + 4;
+        const r = Math.min(10, Math.abs(yc - y1) / 2, Math.abs(y2 - yc) / 2);
+        const s1 = Math.sign(yc - y1) * r;
+        const s2 = Math.sign(y2 - yc) * r;
+        d =
+          `M ${x1} ${y1} L ${xr - r} ${y1} Q ${xr} ${y1}, ${xr} ${y1 + s1}` +
+          ` L ${xr} ${yc - s1} Q ${xr} ${yc}, ${xr - r} ${yc}` +
+          ` L ${xl + r} ${yc} Q ${xl} ${yc}, ${xl} ${yc + s2}` +
+          ` L ${xl} ${y2 - s2} Q ${xl} ${y2}, ${xl + r} ${y2} L ${x2} ${y2}`;
+      }
       newLines.push({
         id: e.id,
-        d: `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`,
+        d,
         unmet: !!src && !satisfiesDependents(src),
       });
     }
