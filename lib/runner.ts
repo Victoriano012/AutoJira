@@ -120,6 +120,21 @@ export function sendFeedback(
   return call("sendFeedback", { path, ticketId, message });
 }
 
+/**
+ * An extra indication for a card that is already in flight (the board's note
+ * button on a Blocked or Working card). The board writes it into the ticket
+ * first, so the flush inside `call` is what makes the run read it; this hands
+ * it to an agent that is working right now. It never starts a card the
+ * scheduler is deliberately holding back.
+ */
+export function noteTicket(
+  path: string[],
+  ticketId: string,
+  message: string
+): Promise<void> {
+  return call("noteTicket", { path, ticketId, message });
+}
+
 /** Reject a ticket in review with feedback (kanban board's red cross). */
 export function rejectTicket(
   path: string[],

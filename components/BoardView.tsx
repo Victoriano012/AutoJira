@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutGraph } from "@/lib/layout";
 import {
   approveTicket,
+  noteTicket,
   rejectTicket,
   runGraph,
   runTicket,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
-import { HandIcon, Spinner, StopSquare } from "./icons";
+import { HandIcon, NoteIcon, Spinner, StopSquare } from "./icons";
 import {
   BoardColumn,
   boardColumn,
@@ -78,11 +79,97 @@ interface PendingRequest {
 }
 
 /** 10 lines of text-xs (16px line-height) + py-1 (8px) + 2px border. */
-const REJECT_MAX_HEIGHT = 170;
+const COMPOSER_MAX_HEIGHT = 170;
 
 /** Sent to the agent when a card is rejected with nothing typed. */
 const DEFAULT_REJECTION =
   "This isn't finished. Go back over the work, find what is missing or wrong, and complete it properly.";
+
+/** An extra indication becomes part of the ticket, not a message in the air:
+ * it is what the card's next run reads, it survives a reload, and the person
+ * can see (and edit) it on the card. */
+const withIndication = (description: string, note: string) =>
+  `${description.trimEnd()}\n\nExtra indication from the human: ${note}`.trim();
+
+/** The box a card opens for a message to its agent — the review column's ✕ and
+ * the note button on a card in flight both use this one. Grows with the text up
+ * to ten lines and then scrolls; Enter sends, Shift+Enter is a newline, and
+ * Escape or a press anywhere outside closes it with the draft intact. */
+function CardComposer({
+  value,
+  onChange,
+  onSend,
+  onClose,
+  placeholder,
+  tone,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  onClose: () => void;
+  placeholder: string;
+  tone: "reject" | "note";
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const skin =
+    tone === "reject"
+      ? {
+          border: "border-red-300 focus:border-red-400",
+          send: "bg-red-500 hover:bg-red-400",
+        }
+      : {
+          border: "border-violet-300 focus:border-violet-400",
+          send: "bg-violet-500 hover:bg-violet-400",
+        };
+
+  // The box mounts fresh on every open, so a restored multi-line draft comes
+  // back at the height it had — same growth as ChatInput.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto"; // shrink so scrollHeight reflects the content
+    const h = Math.min(el.scrollHeight + 2, COMPOSER_MAX_HEIGHT);
+    el.style.height = `${h}px`;
+    el.style.overflowY = h >= COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+  }, [value]);
+
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
+
+  return (
+    // items-end: Send sits level with the last line of a grown box.
+    <div ref={boxRef} className="flex items-end gap-1.5">
+      <textarea
+        autoFocus
+        ref={inputRef}
+        rows={1}
+        className={`block min-w-0 flex-1 resize-none rounded-md border bg-white px-2 py-1 text-xs outline-none ${skin.border}`}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSend();
+          }
+          if (e.key === "Escape") onClose();
+        }}
+      />
+      <button
+        className={`rounded-md px-2 py-1 text-xs text-white ${skin.send}`}
+        onClick={onSend}
+      >
+        Send
+      </button>
+    </div>
+  );
+}
 
 /** Unsent request text, per board, kept outside React so a remount can't eat
  * it. sessionStorage: it belongs to this tab, and nothing here needs a server. */
@@ -342,14 +429,21 @@ export default function BoardView() {
     }
   }
 
-  // ---- reject flow (red cross on a review card) ----
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  // ---- the two boxes a card can open: reject (✕ in review) and note ----
+  // One at a time on the whole board, so opening either closes the other.
+  const [openBox, setOpenBox] = useState<{ id: string; kind: "reject" | "note" } | null>(
+    null
+  );
+  const boxOn = (kind: "reject" | "note", id: string) =>
+    openBox?.kind === kind && openBox.id === id;
+  const closeBox = () => setOpenBox(null);
   // Drafts outlive the input: one per ticket, dropped only when the person
-  // empties the box themselves or the rejection is actually sent.
+  // empties the box themselves or the message is actually sent.
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({});
-  const rejectBoxRef = useRef<HTMLDivElement>(null);
-  const rejectInputRef = useRef<HTMLTextAreaElement>(null);
-  const rejectDraft = rejectingId ? (rejectDrafts[rejectingId] ?? "") : "";
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  /** What just happened to a sent note, on the card, for a few seconds: a
+   * running card's agent has it now, any other card's reads it when it starts. */
+  const [noteFlash, setNoteFlash] = useState<Record<string, string>>({});
   /** The ✓ and ✕ the server has not answered yet: ticket id → the status the
    * person's answer will give it, the status it had when they gave it, and
    * when. Both answers are the person's own decision, so the card leaves review
@@ -388,28 +482,6 @@ export default function BoardView() {
     return () => clearTimeout(timer);
   }, [pending, graph]);
 
-  // Grows with the text up to ten lines, then scrolls — same as ChatInput.
-  // Reopening on another ticket re-runs it, so a restored multi-line draft
-  // comes back at the height it had.
-  useEffect(() => {
-    const el = rejectInputRef.current;
-    if (!el) return;
-    el.style.height = "auto"; // shrink so scrollHeight reflects the content
-    const h = Math.min(el.scrollHeight + 2, REJECT_MAX_HEIGHT);
-    el.style.height = `${h}px`;
-    el.style.overflowY = h >= REJECT_MAX_HEIGHT ? "auto" : "hidden";
-  }, [rejectingId, rejectDraft]);
-
-  // Anything pressed outside the open input dismisses it, draft intact.
-  useEffect(() => {
-    if (!rejectingId) return;
-    const onDown = (e: PointerEvent) => {
-      if (!rejectBoxRef.current?.contains(e.target as Node)) setRejectingId(null);
-    };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [rejectingId]);
-
   /** Stop the agent and keep the ticket out of the queue until the person
    * starts it again. The flag is the browser's own field, so it outlives the
    * reload the server's stop does not know about. */
@@ -438,9 +510,43 @@ export default function BoardView() {
     void runTicket(path, ticketId);
   }
 
+  /**
+   * An extra indication for a card that has not reached review: it goes into
+   * the ticket (so the card's next run reads it, and it survives a reload) and
+   * to the server, which hands it to the agent right now if one is at work on
+   * this card — and never starts a card that is standing still.
+   */
+  function submitNote(t: Ticket) {
+    const msg = (noteDrafts[t.id] ?? "").trim();
+    if (!msg) return; // nothing typed: no default here, unlike a rejection
+    closeBox();
+    setNoteDrafts((d) => ({ ...d, [t.id]: "" }));
+    updateTicket(path, t.id, (x) => ({
+      ...x,
+      description: withIndication(x.description, msg),
+    }));
+    const live = t.status === "running";
+    setNoteFlash((f) => ({
+      ...f,
+      [t.id]: live ? "Sent to the agent" : "Saved — the agent gets it when it starts",
+    }));
+    setTimeout(
+      () =>
+        setNoteFlash((f) => {
+          const next = { ...f };
+          delete next[t.id];
+          return next;
+        }),
+      8000
+    );
+    // The flush inside this call is what carries the description above to the
+    // server, so a card that starts a moment later already has the indication.
+    void noteTicket(path, t.id, msg);
+  }
+
   function submitReject(t: Ticket) {
     const msg = (rejectDrafts[t.id] ?? "").trim() || DEFAULT_REJECTION;
-    setRejectingId(null);
+    closeBox();
     setRejectDrafts((d) => ({ ...d, [t.id]: "" }));
     // Back to its agent: Working, or Blocked if another card holds its file.
     hold(t, "todo");
@@ -667,6 +773,23 @@ export default function BoardView() {
     else cardRefs.current.delete(id);
   };
 
+  /** Say something more to this card's agent — on the two columns where the
+   * work is still in front of it, so nobody has to wait for review to get a
+   * word in. Quiet: it sits with the card's other affordances. */
+  const noteButton = (t: Ticket) => (
+    <button
+      type="button"
+      title="Add an indication for this card's agent"
+      className="shrink-0 text-zinc-400 hover:text-violet-600"
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpenBox({ id: t.id, kind: "note" });
+      }}
+    >
+      <NoteIcon />
+    </button>
+  );
+
   // The board's own ticket — the human-review ticket this window belongs to.
   const parentPath = path.slice(0, -1);
   const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
@@ -794,8 +917,16 @@ export default function BoardView() {
                             </div>
                           ))}
                           {heldLines}
+                          {noteFlash[t.id] && (
+                            <div className="text-violet-500">{noteFlash[t.id]}</div>
+                          )}
                         </div>
-                        {t.paused && (
+                        <div
+                          className="flex shrink-0 items-center gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {noteButton(t)}
+                          {t.paused && (
                           <button
                             disabled={!isReady(t) || t.status === "running"}
                             title={
@@ -817,7 +948,8 @@ export default function BoardView() {
                           >
                             ▶
                           </button>
-                        )}
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -832,58 +964,63 @@ export default function BoardView() {
                             <div className="text-blue-500/80">Queued</div>
                           )}
                           {heldLines}
+                          {noteFlash[t.id] && (
+                            <div className="text-violet-500">{noteFlash[t.id]}</div>
+                          )}
                         </div>
-                        {t.status === "running" ? (
-                          <div
-                            className="flex shrink-0 items-center gap-2"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <StopSquare onClick={() => pause(t.id)} />
-                            <Spinner className="h-2.5 w-2.5" />
-                          </div>
-                        ) : t.status === "error" ? (
-                          <button
-                            className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void runTicket(path, t.id);
-                            }}
-                          >
-                            ↻ Retry
-                          </button>
-                        ) : null}
+                        <div
+                          className="flex shrink-0 items-center gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {noteButton(t)}
+                          {t.status === "running" ? (
+                            <>
+                              <StopSquare onClick={() => pause(t.id)} />
+                              <Spinner className="h-2.5 w-2.5" />
+                            </>
+                          ) : t.status === "error" ? (
+                            <button
+                              className="rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
+                              onClick={() => void runTicket(path, t.id)}
+                            >
+                              ↻ Retry
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     )}
 
+                    {/* The note box, on the two columns whose work is still to
+                     * come. Same box the ✕ opens in review. */}
+                    {(col.id === "blocked" || col.id === "working") &&
+                      boxOn("note", t.id) && (
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <CardComposer
+                            value={noteDrafts[t.id] ?? ""}
+                            onChange={(v) =>
+                              setNoteDrafts((d) => ({ ...d, [t.id]: v }))
+                            }
+                            onSend={() => submitNote(t)}
+                            onClose={closeBox}
+                            placeholder="More indications for the agent…"
+                            tone="note"
+                          />
+                        </div>
+                      )}
+
                     {col.id === "review" && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                        {rejectingId === t.id ? (
-                          <div ref={rejectBoxRef} className="flex items-end gap-1.5">
-                            <textarea
-                              autoFocus
-                              ref={rejectInputRef}
-                              rows={1}
-                              className="block min-w-0 flex-1 resize-none rounded-md border border-red-300 bg-white px-2 py-1 text-xs outline-none focus:border-red-400"
-                              placeholder="What's wrong?"
-                              value={rejectDrafts[t.id] ?? ""}
-                              onChange={(e) =>
-                                setRejectDrafts((d) => ({ ...d, [t.id]: e.target.value }))
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  submitReject(t);
-                                }
-                                if (e.key === "Escape") setRejectingId(null);
-                              }}
-                            />
-                            <button
-                              className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-400"
-                              onClick={() => submitReject(t)}
-                            >
-                              Send
-                            </button>
-                          </div>
+                        {boxOn("reject", t.id) ? (
+                          <CardComposer
+                            value={rejectDrafts[t.id] ?? ""}
+                            onChange={(v) =>
+                              setRejectDrafts((d) => ({ ...d, [t.id]: v }))
+                            }
+                            onSend={() => submitReject(t)}
+                            onClose={closeBox}
+                            placeholder="What's wrong?"
+                            tone="reject"
+                          />
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <button
@@ -896,7 +1033,7 @@ export default function BoardView() {
                             <button
                               className="flex-1 rounded-md bg-red-100 py-1 text-xs font-medium text-red-600 hover:bg-red-200"
                               title="Reject — describe what's wrong"
-                              onClick={() => setRejectingId(t.id)}
+                              onClick={() => setOpenBox({ id: t.id, kind: "reject" })}
                             >
                               ✕
                             </button>

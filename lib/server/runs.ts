@@ -8,10 +8,13 @@ import {
   notReadyReason,
   Project,
   satisfiesDependents,
+  SchedulerFacts,
   Ticket,
   ticketAtPath,
   TicketGraph,
 } from "../types";
+import { resumableSession } from "../agent-session";
+import { selectedModel } from "../config";
 import { streamAgent } from "./agent";
 import * as store from "./project-store";
 
@@ -33,6 +36,10 @@ interface Registry {
   userStopped: Set<string>;
   /** Human messages waiting for a ticket's files to come free, by ticket key. */
   pendingFeedback: Map<string, string>;
+  /** Extra indications typed on a card whose agent is at work, by ticket key.
+   * The ticket's own run loop takes them and resumes its session with them —
+   * nothing else may, or there would be two agents in one workspace. */
+  notes: Map<string, string[]>;
   /** Wakes a scheduler loop that is waiting on its runs, so it can pick up work
    * that appeared since (a card added while another card was running). */
   wakes: Map<string, () => void>;
@@ -45,10 +52,12 @@ const registry: Registry = (globals.__autojiraRegistry ??= {
   loops: new Set(),
   userStopped: new Set(),
   pendingFeedback: new Map(),
+  notes: new Map(),
   wakes: new Map(),
 });
 // A dev-server hot reload keeps the old registry object, which predates these.
 registry.pendingFeedback ??= new Map();
+registry.notes ??= new Map();
 registry.wakes ??= new Map();
 
 const pathKey = (path: string[]) => path.join("/") || "(root)";
@@ -132,13 +141,37 @@ function buildPrompt(project: Project, path: string[], ticket: Ticket): string {
   return lines.filter(Boolean).join("\n");
 }
 
+// ---- notes the person adds to a card in flight ----------------------------
+
+/** Take the indications waiting for this ticket's agent. Always drains: the
+ * board writes each one into the ticket itself as well, so the durable copy is
+ * the ticket's description and this queue only carries the live hand-over. */
+function takeNotes(key: string): string[] {
+  const notes = registry.notes.get(key) ?? [];
+  registry.notes.delete(key);
+  return notes;
+}
+
+/** What an aborted session says in the log: the person's stop — unless it was
+ * their own note interrupting the agent, which the run resumes from. */
+function abortText(key: string): string {
+  return registry.notes.has(key)
+    ? "Taking your indication into account…"
+    : "Stopped by user";
+}
+
 // ---- one agent session ----------------------------------------------------
 
 async function runAgentSession(
   dir: string,
   path: string[],
   ticketId: string,
-  body: { prompt: string; sessionId?: string; attachments?: Attachment[] }
+  body: {
+    prompt: string;
+    sessionId?: string;
+    attachments?: Attachment[];
+    model?: string;
+  }
 ): Promise<{ ok: boolean; text: string; aborted: boolean }> {
   const key = ticketScope(dir, path, ticketId);
   const ctrl = new AbortController();
@@ -155,6 +188,8 @@ async function runAgentSession(
       sessionId: body.sessionId,
       attachments: body.attachments?.map(({ name, dataUrl }) => ({ name, dataUrl })),
       signal: ctrl.signal,
+      model: body.model,
+      writeAccess: true,
     });
     for await (const ev of events) {
       if (ev.type === "init") {
@@ -169,11 +204,16 @@ async function runAgentSession(
       } else if (ev.type === "error") {
         ok = false;
         finalText = ev.message;
-        store.appendLog(dir, path, ticketId, {
-          kind: "error",
-          text: ev.message,
-          ts: Date.now(),
-        });
+        // An error the abort itself caused is not the run's own failure — the
+        // CLI reports the interrupt as one. What actually happened (the person's
+        // stop, or their note) is logged below instead.
+        if (!ctrl.signal.aborted) {
+          store.appendLog(dir, path, ticketId, {
+            kind: "error",
+            text: ev.message,
+            ts: Date.now(),
+          });
+        }
       }
     }
     if (ctrl.signal.aborted) {
@@ -181,7 +221,7 @@ async function runAgentSession(
       finalText = "Stopped by user";
       store.appendLog(dir, path, ticketId, {
         kind: "info",
-        text: finalText,
+        text: abortText(key),
         ts: Date.now(),
       });
     }
@@ -191,7 +231,7 @@ async function runAgentSession(
     finalText = ctrl.signal.aborted ? "Stopped by user" : String(err);
     store.appendLog(dir, path, ticketId, {
       kind: ctrl.signal.aborted ? "info" : "error",
-      text: finalText,
+      text: ctrl.signal.aborted ? abortText(key) : finalText,
       ts: Date.now(),
     });
   } finally {
@@ -199,6 +239,49 @@ async function runAgentSession(
     notifyRuns(dir);
   }
   return { ok, text: finalText, aborted: ctrl.signal.aborted };
+}
+
+/**
+ * The ticket's session, and any session the person's own indications ask for
+ * after it. A note typed on the card interrupts the open session (see
+ * `noteTicket`); this resumes that same session with what they said, so
+ * everything the agent had already done stays in its context, the ticket keeps
+ * its "running" status throughout — the card never leaves Working — and there
+ * is never a second agent in one workspace. Normally exactly one pass.
+ */
+async function runWithNotes(
+  dir: string,
+  path: string[],
+  ticketId: string,
+  body: {
+    prompt: string;
+    sessionId?: string;
+    attachments?: Attachment[];
+    model: string;
+  }
+): Promise<{ ok: boolean; text: string; aborted: boolean }> {
+  const key = ticketScope(dir, path, ticketId);
+  for (;;) {
+    const outcome = await runAgentSession(dir, path, ticketId, body);
+    const notes = takeNotes(key);
+    if (notes.length === 0 || registry.userStopped.has(key)) return outcome;
+    const project = store.getProject(dir);
+    const resumed = resumableSession(
+      project ? ticketAtPath(project.graph, path, ticketId)?.sessionId : undefined,
+      body.model
+    )?.stored;
+    // No session to resume (the agent never reached init): the ticket settles,
+    // and the indication is still in its description for the next run.
+    if (!resumed) return outcome;
+    body = {
+      prompt:
+        `While you were working, the person added indications for this ticket:\n\n` +
+        notes.join("\n\n") +
+        `\n\nTake them into account and carry on with the ticket, then finish as instructed above.`,
+      sessionId: resumed,
+      model: body.model,
+    };
+  }
 }
 
 /** True when the graph at `path` is a human ticket's kanban board. Its tickets
@@ -258,9 +341,10 @@ async function runLeafTicket(dir: string, path: string[], ticketId: string): Pro
   store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
   store.appendLog(dir, path, ticketId, { kind: "info", text: "Run started", ts: Date.now() });
 
-  const { ok, text, aborted } = await runAgentSession(dir, path, ticketId, {
+  const { ok, text, aborted } = await runWithNotes(dir, path, ticketId, {
     prompt: buildPrompt(project, path, ticket),
     attachments: inheritedAttachments(project, path, ticket),
+    model: selectedModel(),
   });
 
   const summary = text.length > 1500 ? text.slice(0, 1500) + "…" : text;
@@ -282,6 +366,61 @@ async function runLeafTicket(dir: string, path: string[], ticketId: string): Pro
             resultSummary: summary,
           }
   );
+}
+
+/**
+ * An extra indication the person typed on an in-progress card (the board's note
+ * button), for that ticket's own agent and nothing else.
+ *
+ * It never starts one. A card the scheduler has not started is standing still
+ * for a reason — a dependency, another card in its files, the person's own
+ * pause — and starting an agent from here would break exactly the rule that
+ * kept it out of the queue, so the only card whose agent hears this now is one
+ * whose session is genuinely open: it is interrupted, and its run loop
+ * (`runLeafTicket`) resumes the same session with the indication. Every other
+ * card already carries the indication in its description, written by the board
+ * before this call, so its run reads it whenever it does start — which is why
+ * nothing here has to be kept for it, and why a server restart cannot lose it.
+ */
+export function noteTicket(
+  dir: string,
+  path: string[],
+  ticketId: string,
+  message: string
+): void {
+  const text = message.trim();
+  const project = store.getProject(dir);
+  const g = project && graphAtPath(project.graph, path);
+  const ticket = project && ticketAtPath(project.graph, path, ticketId);
+  if (!g || !ticket || !text) return;
+
+  store.appendLog(dir, path, ticketId, { kind: "user", text, ts: Date.now() });
+
+  const key = ticketScope(dir, path, ticketId);
+  if (ticket.status === "running") {
+    registry.notes.set(key, [...(registry.notes.get(key) ?? []), text]);
+    // The interrupt is what makes it live; the run loop does the rest. A ticket
+    // marked running with no session left to interrupt (a restart settles those)
+    // still has the indication in its description.
+    registry.controllers.get(key)?.abort();
+    return;
+  }
+
+  // Not running: say when the agent will read it, in the scheduler's own words.
+  const why = notReadyReason(g, ticket, isBoard(dir, path), schedulerFacts(dir, path));
+  const waiting = why?.startsWith("waiting") ? ` (${why})` : "";
+  store.appendLog(dir, path, ticketId, {
+    kind: "info",
+    text:
+      ticket.status === "error"
+        ? "Noted — the agent gets this when you retry the card."
+        : // The card finished between the person pressing send and this: their
+          // ✕ is what puts its agent back to work now.
+          ticket.status === "review"
+          ? "Noted — the card just reached review; the agent gets this if you send it back."
+          : `Noted — the agent gets this when the card starts${waiting}.`,
+    ts: Date.now(),
+  });
 }
 
 /** Send human feedback into the ticket's existing agent session. */
@@ -317,14 +456,17 @@ export async function sendFeedback(
 
   store.appendLog(dir, path, ticketId, { kind: "user", text: message, ts: Date.now() });
   store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
+  const model = selectedModel();
+  const activeSession = resumableSession(ticket.sessionId, model)?.stored;
 
-  const { ok, text, aborted } = await runAgentSession(dir, path, ticketId, {
+  const { ok, text, aborted } = await runWithNotes(dir, path, ticketId, {
     // With no session the ticket never ran, so this is the human opening the
     // work rather than reacting to it.
-    prompt: ticket.sessionId
+    prompt: activeSession
       ? `Human review feedback on your work for this ticket:\n\n${message}\n\nAddress the feedback, then end with a short summary of what you changed.`
       : `${buildPrompt(project, path, ticket)}\n\nThe human is starting this ticket with a request:\n\n${message}`,
-    sessionId: ticket.sessionId,
+    sessionId: activeSession,
+    model,
   });
 
   // Stopped feedback is not a failure: the earlier work still awaits review.
@@ -469,11 +611,17 @@ function readyTickets(dir: string, path: string[], g: TicketGraph): Ticket[] {
   // check that a card it shows in Working really is about to run. Only the two
   // facts that exist solely in this process are supplied from here.
   const onBoard = isBoard(dir, path);
-  const facts = {
+  const facts = schedulerFacts(dir, path);
+  return g.tickets.filter((t) => notReadyReason(g, t, onBoard, facts) === null);
+}
+
+/** The two facts `notReadyReason` cannot know: which of this graph's tickets
+ * the person stopped, and which subgraphs are already being drained. */
+function schedulerFacts(dir: string, path: string[]): SchedulerFacts {
+  return {
     stopped: (id: string) => registry.userStopped.has(ticketScope(dir, path, id)),
     draining: (id: string) => registry.loops.has(graphScope(dir, [...path, id])),
   };
-  return g.tickets.filter((t) => notReadyReason(g, t, onBoard, facts) === null);
 }
 
 /**

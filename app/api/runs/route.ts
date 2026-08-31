@@ -16,6 +16,7 @@ export interface RunRequest {
     | "stopTicket"
     | "stopGraph"
     | "sendFeedback"
+    | "noteTicket"
     | "approveTicket"
     | "rejectTicket"
     | "settleZombies";
@@ -43,6 +44,9 @@ export async function POST(req: Request) {
         break;
       case "sendFeedback":
         await runs.sendFeedback(dir, path, id, body.message ?? "");
+        break;
+      case "noteTicket":
+        runs.noteTicket(dir, path, id, body.message ?? "");
         break;
       case "rejectTicket":
         await runs.rejectTicket(dir, path, id, body.message ?? "");
