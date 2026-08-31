@@ -10,6 +10,7 @@ import GearIcon from "./GearIcon";
 import HomeIcon from "./HomeIcon";
 import { LayoutIcon, PlayIcon, PlusIcon, Spinner, StopIcon } from "./icons";
 import PopulateModal from "./PopulateModal";
+import { useRunAck } from "./useRunAck";
 import SettingsModal from "./SettingsModal";
 
 export default function Toolbar() {
@@ -29,11 +30,15 @@ export default function Toolbar() {
 
   // Pushed by the runner the moment a level starts or settles — a poll would
   // both lag and keep saying "running" for a run parked on a human gate.
-  const running = useSyncExternalStore(
+  const runsHere = useSyncExternalStore(
     subscribeRuns,
     () => isGraphRunning(path),
     () => false
   );
+  // A run that parks on a human gate settles before the click is over, so the
+  // button would never appear to react; hold the running look for a moment.
+  const [acking, ack] = useRunAck();
+  const running = runsHere || acking;
 
   const graph = graphAtPath(project.graph, path);
 
@@ -161,7 +166,10 @@ export default function Toolbar() {
         ) : (
           <button
             className="rounded-lg px-2 py-1.5 text-emerald-600 hover:bg-zinc-200 hover:text-emerald-500 disabled:opacity-50"
-            onClick={() => void runGraph(path)}
+            onClick={() => {
+              ack();
+              void runGraph(path);
+            }}
             disabled={total === 0}
             title="Run graph"
           >
