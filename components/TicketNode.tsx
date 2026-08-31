@@ -108,6 +108,11 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
   const swept = useTicketAck(ackKey(path, ticket.id));
   const running = isTicketRunning(ticket) || swept;
   const waiting = isTicketWaiting(ticket, ready) && ticket.status !== "error";
+  // "review" is latched: the runner wrote it when it handed this gate to the
+  // person. Reopening something upstream blocks the ticket again without
+  // rewriting that status, so the border reads it as todo — amber means
+  // "waiting on you right now", never "was, once".
+  const shown: TicketStatus = ticket.status === "review" && !ready ? "todo" : ticket.status;
 
   // Grows in once, on the render that first puts this ticket on the canvas.
   const [appeared] = useState(() => isNewOnCanvas(ticket.id, path));
@@ -167,7 +172,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             ? borderByStatus.running
             : waiting
               ? borderByStatus.review
-              : borderByStatus[ticket.status]
+              : borderByStatus[shown]
       }`}
     >
       <Handle type="target" position={Position.Left} className={handleClass} />
@@ -242,7 +247,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
             />
             <Spinner />
           </span>
-        ) : ticket.status === "todo" ? (
+        ) : shown === "todo" ? (
           <button
             disabled={!ready}
             onClick={(e) => {
@@ -261,7 +266,7 @@ function TicketNodeInner({ data, selected }: NodeProps<TicketNodeType>) {
         ) : (
           // Waiting: play only — no spinner, no stop, since nothing is running.
           // The border colour carries the state, so no word is printed here.
-          (waiting || ticket.status === "review" || ticket.status === "error") && (
+          (waiting || shown === "review" || shown === "error") && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
