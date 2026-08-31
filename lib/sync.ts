@@ -1,5 +1,6 @@
 "use client";
 
+import { settleZombies } from "./runner";
 import { useStore } from "./store";
 
 async function createOrImport(body: { name?: string; path?: string }) {
@@ -26,6 +27,9 @@ export async function openProject(id: string): Promise<void> {
   }
   const row = await res.json();
   useStore.getState().openProject(id, row.data);
+  // Statuses saved mid-run outlive the run that wrote them; settle them now so
+  // the rest of the app can trust a stored "running".
+  settleZombies();
 }
 
 /** Persist where a project's node sits on the meta-graph (project picker). */

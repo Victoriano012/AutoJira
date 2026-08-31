@@ -379,13 +379,33 @@ function liveBeneath(path: string[], t: Ticket): boolean {
 
 /** A zombie "running" — a persisted status whose browser-side run died with a
  * reload — has nothing to abort and nothing that will ever write a final
- * status, so settle it back to todo. Live runs settle themselves after the
- * abort (and must not be reset here: a todo leaf would make the parent's
- * scheduler consider it runnable again and restart it). */
+ * status, so settle it back to todo (to review for a human ticket with no
+ * board: it is a gate, so it belongs to its person, not to the scheduler).
+ * Live runs settle themselves after the abort (and must not be reset here: a
+ * todo leaf would make the parent's scheduler consider it runnable again and
+ * restart it). */
 function settleZombie(path: string[], ticketId: string): void {
   const t = ticketAtPath(useStore.getState().project.graph, path, ticketId);
   if (t && t.status === "running" && !liveBeneath(path, t))
-    useStore.getState().updateTicket(path, ticketId, (x) => ({ ...x, status: "todo" }));
+    useStore.getState().updateTicket(path, ticketId, (x) => ({
+      ...x,
+      status:
+        x.type === "human_review" && x.subgraph.tickets.length === 0
+          ? "review"
+          : "todo",
+    }));
+}
+
+/** Settle every zombie left in a project that has just been loaded from disk:
+ * nothing is live yet, so any stored "running" is the corpse of a run that
+ * died with the last reload. Without this the predicates would have to guess
+ * whether a stored "running" is real. */
+export function settleZombies(path: string[] = []): void {
+  const g = graphAtPath(useStore.getState().project.graph, path);
+  for (const t of g?.tickets ?? []) {
+    settleZombies([...path, t.id]);
+    settleZombie(path, t.id);
+  }
 }
 
 /** Abort a ticket's run (and its subgraph's) without marking it user-stopped;
