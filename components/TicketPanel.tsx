@@ -12,7 +12,7 @@ import TrashIcon from "./TrashIcon";
 
 export default function TicketPanel() {
   const project = useStore((s) => s.project);
-  const path = useStore((s) => s.path);
+  const openPath = useStore((s) => s.path);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const removeTicket = useStore((s) => s.removeTicket);
@@ -27,6 +27,12 @@ export default function TicketPanel() {
     handleProps: splitHandleProps,
   } = useSplitResize();
 
+  // The selection is a node of the open graph — or, double-clicked into, the
+  // ticket whose subgraph is open, which lives one level up.
+  const path =
+    selectedId !== null && openPath[openPath.length - 1] === selectedId
+      ? openPath.slice(0, -1)
+      : openPath;
   const graph = graphAtPath(project.graph, path);
   const ticket = graph?.tickets.find((t) => t.id === selectedId) ?? null;
   const logLength = ticket?.log?.length ?? 0;

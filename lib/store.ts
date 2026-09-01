@@ -26,7 +26,9 @@ interface AppState {
   openProject: (id: string, project: Project) => void;
   closeProject: () => void;
   setProject: (p: Partial<Project>) => void;
-  setPath: (path: string[]) => void;
+  /** `selectId` arrives with its details panel open — a ticket double-clicked
+   * into shows its own panel over its subgraph. */
+  setPath: (path: string[], selectId?: string) => void;
   select: (id: string | null) => void;
   toggleChat: () => void;
 
@@ -107,7 +109,10 @@ const freshStore = create<AppState>()(
             project,
             path: g ? s.path : [],
             selectedId:
-              g && s.selectedId && g.tickets.some((t) => t.id === s.selectedId)
+              g &&
+              s.selectedId &&
+              (g.tickets.some((t) => t.id === s.selectedId) ||
+                s.selectedId === s.path[s.path.length - 1])
                 ? s.selectedId
                 : null,
           };
@@ -124,9 +129,11 @@ const freshStore = create<AppState>()(
         );
       },
       setProject: (p) => set((s) => ({ project: { ...s.project, ...p } })),
-      setPath: (path) => {
+      setPath: (path, selectId) => {
         const s = get();
-        zoomPath(s.path, path, s.selectedId !== null, () => set({ path, selectedId: null }));
+        zoomPath(s.path, path, s.selectedId !== null && !selectId, () =>
+          set({ path, selectedId: selectId ?? null })
+        );
       },
       // The ticket panel and the chat drawer share the same space — only one open at a time.
       select: (id) => set((s) => ({ selectedId: id, chatOpen: id === null ? s.chatOpen : false })),

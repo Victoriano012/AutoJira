@@ -266,7 +266,12 @@ export function GraphCanvas() {
           }}
           onNodeDoubleClick={(_, node) => {
             clearTimeout(selectTimer.current);
-            setPath([...path, node.id]);
+            // A human ticket's board is its own interface; any other ticket
+            // opens with its details alongside its subgraph.
+            setPath(
+              [...path, node.id],
+              node.data.ticket.type === "human_review" ? undefined : node.id
+            );
           }}
           onPaneClick={() => {
             clearTimeout(selectTimer.current);
