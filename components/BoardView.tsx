@@ -12,6 +12,7 @@ import {
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
+import ConfirmDialog from "./ConfirmDialog";
 import { HandIcon, NoteIcon, Spinner, StopSquare } from "./icons";
 import { useBackSwipe } from "./useBackSwipe";
 import {
@@ -318,7 +319,7 @@ interface DepLine {
 export default function BoardView() {
   const project = useStore((s) => s.project);
   const path = useStore((s) => s.path);
-  const { updateGraph, updateTicket, setPath } = useStore.getState();
+  const { updateGraph, updateTicket, removeTicket, setPath } = useStore.getState();
 
   // The same swipe-back gesture the canvas has: a board is a view like any
   // other, and it is the *only* thing rendered at its level, so this is the one
@@ -330,6 +331,7 @@ export default function BoardView() {
   // conversation. Routing it through the store's selection would also open the
   // canvas's side details panel, which has no place in board view.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Ticket | null>(null);
   const pathKey = path.join("/");
   useEffect(() => setSelectedId(null), [pathKey]);
 
@@ -1020,7 +1022,7 @@ export default function BoardView() {
                       e.stopPropagation();
                       setSelectedId((id) => (id === t.id ? null : t.id));
                     }}
-                    className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
+                    className={`relative cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
                       enteringIds.current.has(t.id) ? "ticket-appear " : ""
                     }${
                       t.id === selectedId
@@ -1030,7 +1032,18 @@ export default function BoardView() {
                           : "border-zinc-200"
                     }`}
                   >
-                    <div className="line-clamp-2 break-words text-sm font-medium text-zinc-900">
+                    <button
+                      className="absolute right-2 top-1.5 text-sm leading-none text-zinc-400 hover:text-red-500"
+                      title="Delete ticket"
+                      aria-label="Delete ticket"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDelete(t);
+                      }}
+                    >
+                      ×
+                    </button>
+                    <div className="line-clamp-2 break-words pr-4 text-sm font-medium text-zinc-900">
                       {t.title}
                     </div>
                     {/* The pressed card shows what its agent has been doing —
@@ -1318,6 +1331,20 @@ export default function BoardView() {
           sendTitle="Send — AI will turn it into tickets"
         />
       </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete ticket?"
+          message={`“${confirmDelete.title}” will be removed from the graph.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => {
+            removeTicket(path, confirmDelete.id);
+            setConfirmDelete(null);
+          }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }
