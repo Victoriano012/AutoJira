@@ -8,11 +8,11 @@ export interface ModelChoice {
 
 /** Model used when the user hasn't picked one. Shared by the server-side config
  * reader and the client-side Settings modal, so both agree on the default. */
-export const DEFAULT_MODEL = "claude-fable-5";
+export const DEFAULT_MODEL = "claude-fable-5-1";
 
 /** Models exposed by the two locally authenticated coding-agent CLIs. */
 export const MODEL_CHOICES: readonly ModelChoice[] = [
-  { value: DEFAULT_MODEL, label: "Fable 5 (default)", provider: "claude" },
+  { value: DEFAULT_MODEL, label: "Fable 5.1 (default)", provider: "claude" },
   { value: "claude-opus-5", label: "Opus 5", provider: "claude" },
   { value: "claude-sonnet-5", label: "Sonnet 5", provider: "claude" },
   {
