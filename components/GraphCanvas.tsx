@@ -28,8 +28,13 @@ import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TicketNode, type TicketNodeType } from "./TicketNode";
 import { useBackSwipe } from "./useBackSwipe";
+import { useFitAllMinZoom } from "./useFitAllZoom";
 
 const nodeTypes: NodeTypes = { ticket: TicketNode };
+
+/** Breathing room around a fitted graph — and, through the zoom floor derived
+ * from it, around a fully zoomed-out one. */
+const FIT_PADDING = 0.2;
 
 /** Long enough to read as movement, short enough to accompany the panel. */
 const PAN_MS = 220;
@@ -216,55 +221,65 @@ export function GraphCanvas() {
   const graphKey = `${projectId}:${path.join("/")}`;
   const start = useMemo(() => rememberedViewport(graphKey), [graphKey]);
 
+  // However big the graph grows, zooming out must still show all of it (see
+  // `useFitAllZoom`). Fed the store's nodes rather than the local mirror: the
+  // mirror is rewritten on every frame of a node drag, and the position that
+  // counts is the one the drag ends on. Null until the canvas has been
+  // measured — hence the canvas waiting for it below.
+  const minZoom = useFitAllMinZoom(storeNodes, wrapperRef, FIT_PADDING);
+
   return (
     <div ref={wrapperRef} className="relative h-full w-full overscroll-x-none">
-      <ReactFlow
-        // Remount when the viewed graph changes (project switch, subgraph
-        // navigation) so the mount-time fitView recenters on it.
-        key={graphKey}
-        nodes={nodes}
-        edges={styledEdges}
-        nodeTypes={nodeTypes}
-        colorMode="light"
-        // A graph already visited this page-lifetime opens where it was left
-        // (see `lib/viewport-memory.ts`), and only a first visit fits.
-        // `defaultViewport` rather than a setViewport once mounted: it is the
-        // transform the first paint gets, and a queued fitView would in any
-        // case run after the nodes are measured — after any effect of ours.
-        fitView={!start}
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        defaultViewport={start}
-        proOptions={{ hideAttribution: true }}
-        deleteKeyCode={["Backspace", "Delete"]}
-        onConnect={onConnect}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onMoveEnd={(_, viewport) => rememberViewport(graphKey, viewport)}
-        onNodeDragStop={(_, node) =>
-          updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
-        }
-        onNodeClick={(_, node) => {
-          clearTimeout(selectTimer.current);
-          selectTimer.current = window.setTimeout(
-            () => select(node.id),
-            DOUBLE_CLICK_GRACE_MS
-          );
-        }}
-        onNodeDoubleClick={(_, node) => {
-          clearTimeout(selectTimer.current);
-          setPath([...path, node.id]);
-        }}
-        onPaneClick={() => {
-          clearTimeout(selectTimer.current);
-          select(null);
-        }}
-        onNodesDelete={(deleted) => deleted.forEach((n) => removeTicket(path, n.id))}
-        onEdgesDelete={(deleted) => deleted.forEach((e) => removeEdge(path, e.id))}
-      >
-        <PanForPanel areaRef={wrapperRef} />
-        <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
-        <Controls />
-      </ReactFlow>
+      {minZoom !== null && (
+        <ReactFlow
+          // Remount when the viewed graph changes (project switch, subgraph
+          // navigation) so the mount-time fitView recenters on it.
+          key={graphKey}
+          nodes={nodes}
+          edges={styledEdges}
+          nodeTypes={nodeTypes}
+          colorMode="light"
+          // A graph already visited this page-lifetime opens where it was left
+          // (see `lib/viewport-memory.ts`), and only a first visit fits.
+          // `defaultViewport` rather than a setViewport once mounted: it is the
+          // transform the first paint gets, and a queued fitView would in any
+          // case run after the nodes are measured — after any effect of ours.
+          fitView={!start}
+          fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1 }}
+          defaultViewport={start}
+          minZoom={minZoom}
+          proOptions={{ hideAttribution: true }}
+          deleteKeyCode={["Backspace", "Delete"]}
+          onConnect={onConnect}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onMoveEnd={(_, viewport) => rememberViewport(graphKey, viewport)}
+          onNodeDragStop={(_, node) =>
+            updateTicket(path, node.id, (t) => ({ ...t, position: node.position }))
+          }
+          onNodeClick={(_, node) => {
+            clearTimeout(selectTimer.current);
+            selectTimer.current = window.setTimeout(
+              () => select(node.id),
+              DOUBLE_CLICK_GRACE_MS
+            );
+          }}
+          onNodeDoubleClick={(_, node) => {
+            clearTimeout(selectTimer.current);
+            setPath([...path, node.id]);
+          }}
+          onPaneClick={() => {
+            clearTimeout(selectTimer.current);
+            select(null);
+          }}
+          onNodesDelete={(deleted) => deleted.forEach((n) => removeTicket(path, n.id))}
+          onEdgesDelete={(deleted) => deleted.forEach((e) => removeEdge(path, e.id))}
+        >
+          <PanForPanel areaRef={wrapperRef} />
+          <Background variant={BackgroundVariant.Dots} gap={24} color="#d4d4d8" />
+          <Controls />
+        </ReactFlow>
+      )}
       {graph && graph.tickets.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
           No tickets yet — add one, or let AI populate the graph

@@ -26,13 +26,14 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
 import GearIcon from "./GearIcon";
 import { StopSquare } from "./icons";
 import Logo from "./Logo";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
+import { useFitAllMinZoom } from "./useFitAllZoom";
 
 type ProjectNodeType = Node<
   { name: string; running: boolean; done: boolean; onDelete: () => void },
@@ -115,6 +116,10 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
 
 const ProjectNode = memo(ProjectNodeInner);
 const nodeTypes: NodeTypes = { project: ProjectNode };
+
+/** React Flow's own default fit padding, spelled out because the zoom floor is
+ * derived from the same number (see `useFitAllZoom`). */
+const FIT_PADDING = 0.1;
 
 function ProjectModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
@@ -311,6 +316,13 @@ export default function ProjectPicker() {
   // rewriting it while the graph is up.
   const [start] = useState(() => rememberedViewport(META_GRAPH_KEY));
 
+  // Someone with a lot of projects has the same problem as a big graph of
+  // tickets: the zoom-out has to go far enough to show all of them (see
+  // `useFitAllZoom`). Null until the canvas has been measured, which is one
+  // more reason not to render it yet.
+  const areaRef = useRef<HTMLDivElement>(null);
+  const minZoom = useFitAllMinZoom(nodes, areaRef, FIT_PADDING);
+
   const refresh = useCallback(async () => {
     const res = await fetch("/api/projects");
     if (!res.ok) return;
@@ -383,15 +395,16 @@ export default function ProjectPicker() {
           <GearIcon />
         </button>
       </header>
-      <div className="relative flex-1 min-h-0">
-        {loaded ? (
+      <div ref={areaRef} className="relative flex-1 min-h-0">
+        {loaded && minZoom !== null ? (
           <ReactFlow
             nodes={nodes}
             nodeTypes={nodeTypes}
             colorMode="light"
             fitView={!start}
-            fitViewOptions={{ maxZoom: 1 }}
+            fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1 }}
             defaultViewport={start}
+            minZoom={minZoom}
             proOptions={{ hideAttribution: true }}
             nodesConnectable={false}
             deleteKeyCode={null}
