@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -7,6 +7,14 @@ import { AttachmentPayload, writeAttachments } from "../attachments";
 import { selectedModel } from "../config";
 import { providerForModel } from "../models";
 import { streamCodexAgent } from "./codex";
+
+/** What one agent session cost, as the provider reported it. Nothing is
+ * modelled here: a provider that gives no cost figure (the Codex CLI gives
+ * tokens only) leaves `costUsd` absent rather than being priced from a table. */
+export interface RunUsage {
+  tokens: number;
+  costUsd?: number;
+}
 
 /** One agent turn, as the ticket runner consumes it. */
 export type AgentEvent =
@@ -18,6 +26,7 @@ export type AgentEvent =
       ok: boolean;
       text: string;
       structuredOutput?: unknown;
+      usage?: RunUsage;
     }
   | { type: "error"; message: string };
 
@@ -116,6 +125,20 @@ export async function runAgent(req: AgentRequest): Promise<AgentResult> {
   return result;
 }
 
+function claudeUsage(modelUsage: Record<string, ModelUsage>): RunUsage {
+  let tokens = 0;
+  let costUsd = 0;
+  for (const u of Object.values(modelUsage ?? {})) {
+    tokens +=
+      u.inputTokens +
+      u.outputTokens +
+      u.cacheReadInputTokens +
+      u.cacheCreationInputTokens;
+    costUsd += u.costUSD;
+  }
+  return { tokens, costUsd };
+}
+
 async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent> {
   const model = req.model!;
   const resume = resumableSession(req.sessionId, model);
@@ -179,17 +202,23 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
           }
         }
       } else if (msg.type === "result") {
+        // modelUsage is the SDK's own accounting field (main loop, subagents
+        // and internal calls), cumulative over this query() call — one prompt
+        // here, so the single result message carries the whole session.
+        const usage = claudeUsage(msg.modelUsage);
         yield msg.subtype === "success"
           ? {
               type: "result",
               ok: !msg.is_error,
               text: msg.result,
               structuredOutput: msg.structured_output,
+              usage,
             }
           : {
               type: "result",
               ok: false,
               text: `Agent stopped: ${msg.subtype}`,
+              usage,
             };
       }
     }

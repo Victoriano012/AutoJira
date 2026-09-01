@@ -4,9 +4,9 @@ import type { Project, Ticket, TicketGraph, TicketStatus } from "./types";
  * Single-writer discipline between the browser and the server process.
  *
  * Runs execute in the server, so the server is the only writer of the fields a
- * run produces — status, log, sessionId, resultSummary. The browser is the only
- * writer of everything else (titles, descriptions, types, positions, edges,
- * attachments, chat, board sessions, the ticket set itself).
+ * run produces — status, log, sessionId, resultSummary, stats. The browser is
+ * the only writer of everything else (titles, descriptions, types, positions,
+ * edges, attachments, chat, board sessions, the ticket set itself).
  *
  * The browser still PUTs the whole project (autosave), so the server merges:
  * structure and user fields from the payload, run fields from its own state.
@@ -23,6 +23,7 @@ function runFields(t: Ticket): Partial<Ticket> {
     log: t.log,
     ...(t.sessionId !== undefined ? { sessionId: t.sessionId } : {}),
     ...(t.resultSummary !== undefined ? { resultSummary: t.resultSummary } : {}),
+    ...(t.stats !== undefined ? { stats: t.stats } : {}),
   };
 }
 

@@ -23,6 +23,8 @@ interface CodexEvent {
   message?: string;
   error?: { message?: string } | string;
   item?: CodexItem;
+  /** turn.completed only. Codex reports tokens but never a cost. */
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 /** Kept separate and exported so the CLI contract can be tested without
@@ -174,6 +176,11 @@ export async function* streamCodexAgent(
         }
       } else if (event.type === "turn.completed") {
         resultSent = true;
+        // input_tokens already includes the cached ones; no cost figure exists
+        // here, so `usage.costUsd` stays absent rather than being invented.
+        const usage = {
+          tokens: (event.usage?.input_tokens ?? 0) + (event.usage?.output_tokens ?? 0),
+        };
         if (req.outputSchema) {
           const parsed = parseStructured(finalText);
           yield parsed.ok
@@ -182,10 +189,11 @@ export async function* streamCodexAgent(
                 ok: true,
                 text: finalText,
                 structuredOutput: parsed.value,
+                usage,
               }
-            : { type: "result", ok: false, text: parsed.message };
+            : { type: "result", ok: false, text: parsed.message, usage };
         } else {
-          yield { type: "result", ok: true, text: finalText };
+          yield { type: "result", ok: true, text: finalText, usage };
         }
       } else if (event.type === "turn.failed" || event.type === "error") {
         resultSent = true;

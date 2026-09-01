@@ -7,6 +7,7 @@ import {
   MODEL_CHOICES,
   type ModelProvider,
 } from "@/lib/models";
+import StatsModal from "./StatsModal";
 
 const PROVIDERS: { value: ModelProvider; label: string }[] = [
   { value: "claude", label: "Claude Code" },
@@ -23,6 +24,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   useEffect(() => {
     void fetch("/api/config")
@@ -32,10 +34,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Escape belongs to whichever view is on top: the stats view closes back to
+    // settings, not straight out of both.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !showStats) onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, showStats]);
 
   async function save() {
     if (busy) return;
@@ -47,6 +53,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     });
     onClose();
   }
+
+  // The stats view takes over the whole overlay rather than stacking on it, so
+  // one backdrop click or Escape means one thing. Settings keeps its state.
+  if (showStats) return <StatsModal onClose={() => setShowStats(false)} />;
 
   return (
     <div
@@ -102,6 +112,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 title="Directory on the server where the agents work"
               />
             </label>
+          )}
+          {projectId && (
+            <div>
+              <span className="text-sm font-medium text-zinc-700">Stats</span>
+              <button
+                className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100"
+                onClick={() => setShowStats(true)}
+                title="Tickets, time, cost and rejections for this level and everything inside it"
+              >
+                See project stats…
+              </button>
+            </div>
           )}
         </div>
         <div className="mt-6 flex items-center gap-2">

@@ -23,6 +23,27 @@ export interface LogEntry {
   ts: number;
 }
 
+/**
+ * What a ticket's agent work cost, folded in by the server as each session
+ * ends. Absent on tickets that never ran and on every ticket of a project
+ * older than this field — "not recorded" is not the same as zero, so the stats
+ * panel keeps the two apart.
+ */
+export interface TicketStats {
+  /** Agent sessions run for this ticket; feedback and notes resume as another. */
+  runs: number;
+  /** Wall-clock ms those sessions took. */
+  ms: number;
+  /** Tokens the provider reported (input + output, cache included). */
+  tokens: number;
+  /** USD the provider reported. Claude reports one; the Codex CLI never does. */
+  costUsd: number;
+  /** Runs whose provider reported no cost, so `costUsd` is short by them. */
+  runsWithoutCost: number;
+  /** Times the person sent this ticket back from review instead of approving. */
+  rejections: number;
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -46,6 +67,8 @@ export interface Ticket {
   boardSessionId?: string;
   log: LogEntry[];
   resultSummary?: string;
+  /** Server-owned run totals; see TicketStats and `runFields`. */
+  stats?: TicketStats;
   /** Stopped by the person, not by dependencies: it stays out of the queue and
    * shows a Run button until they start it again. */
   paused?: boolean;

@@ -15,7 +15,8 @@ import {
 } from "../types";
 import { resumableSession } from "../agent-session";
 import { selectedModel } from "../config";
-import { streamAgent } from "./agent";
+import { addStats } from "../stats";
+import { RunUsage, streamAgent } from "./agent";
 import * as store from "./project-store";
 
 /**
@@ -160,6 +161,38 @@ function abortText(key: string): string {
     : "Stopped by user";
 }
 
+// ---- what the work cost ---------------------------------------------------
+
+/**
+ * Fold one agent session's numbers into the ticket that ran.
+ *
+ * A server-written ticket field, so `stats` is in `runFields` (see
+ * run-state.ts) — without that the browser's next autosave would wipe every
+ * total, since the browser owns the ticket otherwise.
+ *
+ * Only what the provider actually reported goes in: time is measured here,
+ * tokens and cost come from the result message, and a run whose provider gave
+ * no cost is counted in `runsWithoutCost` instead of being priced from a table.
+ */
+function recordRun(
+  dir: string,
+  path: string[],
+  ticketId: string,
+  ms: number,
+  usage?: RunUsage
+): void {
+  store.updateTicket(dir, path, ticketId, (t) => ({
+    ...t,
+    stats: addStats(t.stats, {
+      runs: 1,
+      ms,
+      tokens: usage?.tokens ?? 0,
+      costUsd: usage?.costUsd ?? 0,
+      runsWithoutCost: usage?.costUsd === undefined ? 1 : 0,
+    }),
+  }));
+}
+
 // ---- one agent session ----------------------------------------------------
 
 async function runAgentSession(
@@ -180,6 +213,8 @@ async function runAgentSession(
 
   let ok = false;
   let finalText = "";
+  let usage: RunUsage | undefined;
+  const started = Date.now();
 
   try {
     const events = streamAgent({
@@ -201,6 +236,7 @@ async function runAgentSession(
       } else if (ev.type === "result") {
         ok = ev.ok;
         finalText = ev.text ?? "";
+        usage = ev.usage;
       } else if (ev.type === "error") {
         ok = false;
         finalText = ev.message;
@@ -236,6 +272,8 @@ async function runAgentSession(
     });
   } finally {
     registry.controllers.delete(key);
+    // A stopped or failed session still spent the time and the tokens it spent.
+    recordRun(dir, path, ticketId, Date.now() - started, usage);
     notifyRuns(dir);
   }
   return { ok, text: finalText, aborted: ctrl.signal.aborted };
@@ -428,12 +466,25 @@ export async function sendFeedback(
   dir: string,
   path: string[],
   ticketId: string,
-  message: string
+  message: string,
+  rejection = false
 ): Promise<void> {
   const project = store.getProject(dir);
   if (!project) return;
   const ticket = ticketAtPath(project.graph, path, ticketId);
   if (!ticket) return;
+
+  // The one thing the logs cannot be read back for: a rejection, a note and a
+  // panel message all write the same `kind: "user"` line, so the count is kept
+  // as it happens. `rejection` is the board's ✕ — which resets the card to todo
+  // before this call, so its status cannot be trusted here; the graph view's
+  // feedback box has no such reset, and a ticket in review is being sent back.
+  if (rejection || ticket.status === "review") {
+    store.updateTicket(dir, path, ticketId, (t) => ({
+      ...t,
+      stats: addStats(t.stats, { rejections: 1 }),
+    }));
+  }
 
   // Answering a ticket puts its agent back to work, which re-claims its files —
   // and another ticket may have taken one of them while it sat in review. The
@@ -523,7 +574,7 @@ export async function rejectTicket(
     }
   }
 
-  await sendFeedback(dir, path, ticketId, message);
+  await sendFeedback(dir, path, ticketId, message, true);
   // The reset downstream tickets are runnable again once the fix lands —
   // restart the scheduler if this graph's run is still active.
   if (registry.active.has(graphScope(dir, path))) void runGraph(dir, path, true);

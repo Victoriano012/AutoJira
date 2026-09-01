@@ -117,6 +117,7 @@ export function updateTicket(
   if (was.status !== now.status) patch.status = now.status;
   if (was.sessionId !== now.sessionId) patch.sessionId = now.sessionId;
   if (was.resultSummary !== now.resultSummary) patch.resultSummary = now.resultSummary;
+  if (was.stats !== now.stats) patch.stats = now.stats;
   // A stop the person made elsewhere (the toolbar, the ticket panel) reaches
   // the open board this way: without it the card sits in Working saying Queued
   // while the scheduler has quietly parked it.
