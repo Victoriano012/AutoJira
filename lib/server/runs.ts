@@ -716,6 +716,37 @@ export function autoRunBoards(dir: string, path: string[] = []): void {
 }
 
 /**
+ * Pressing run on a graph is the person saying "go" about everything in it, so
+ * a ticket sitting at "error" goes back to "todo" — the same thing its own
+ * Retry button does — and the scheduler can pick it up again. The failure's log
+ * entries stay: what went wrong is history, not state.
+ *
+ * The whole subtree, not just this level. A parent whose subgraph holds nothing
+ * but a failed ticket is not ready either (`hasRunnableWork`), so a run that
+ * revived each level only as it reached it would never reach any of them.
+ *
+ * Only from an explicit run (`resume === false`). The board's automatic
+ * scheduler resumes, so "error" stays terminal for it — otherwise a card that
+ * fails every time would be retried for as long as the board is open.
+ *
+ * A ticket the person paused or stopped is left where it is — which is why the
+ * caller asks this before it lifts this level's stops: run un-pauses a ticket
+ * that was waiting its turn, as it always has, but a failure the person stopped
+ * is not work they asked to see attempted again.
+ */
+function reviveFailures(dir: string, path: string[]): void {
+  const project = store.getProject(dir);
+  for (const t of (project && graphAtPath(project.graph, path))?.tickets ?? []) {
+    reviveFailures(dir, [...path, t.id]);
+    if (t.status !== "error" || t.paused) continue;
+    if (registry.userStopped.has(ticketScope(dir, path, t.id))) continue;
+    store.updateTicket(dir, path, t.id, (x) =>
+      x.status === "error" ? { ...x, status: "todo" } : x
+    );
+  }
+}
+
+/**
  * Run every ticket in the graph at `path`, respecting dependency edges.
  * All ready tickets run in parallel, each in its own agent session; whenever
  * one finishes, newly-unblocked tickets are started. Stops branches at
@@ -734,6 +765,10 @@ export async function runGraph(
   // This cannot be inferred from `active`: a run parked on a human gate stays
   // active until the gate is answered, which would freeze the skip for good.
   if (!resume) {
+    // Failures first, while the stops still say what the person said: pressing
+    // run gives every failure below here another go, but not one they had
+    // deliberately stopped — even though the next lines lift that stop.
+    reviveFailures(dir, path);
     for (const key of [...registry.userStopped])
       if (key.startsWith(k + "#")) registry.userStopped.delete(key);
     const p = store.getProject(dir);
