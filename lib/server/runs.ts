@@ -378,9 +378,11 @@ async function runLeafTicket(dir: string, path: string[], ticketId: string): Pro
 
   store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
   store.appendLog(dir, path, ticketId, { kind: "info", text: "Run started", ts: Date.now() });
+  const prompt = buildPrompt(project, path, ticket);
+  store.appendLog(dir, path, ticketId, { kind: "user", text: prompt, ts: Date.now() });
 
   const { ok, text, aborted } = await runWithNotes(dir, path, ticketId, {
-    prompt: buildPrompt(project, path, ticket),
+    prompt,
     attachments: inheritedAttachments(project, path, ticket),
     model: selectedModel(),
   });
@@ -505,17 +507,21 @@ export async function sendFeedback(
     return;
   }
 
-  store.appendLog(dir, path, ticketId, { kind: "user", text: message, ts: Date.now() });
-  store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
   const model = selectedModel();
   const activeSession = resumableSession(ticket.sessionId, model)?.stored;
+  // With no session the ticket never ran, so this is the human opening the
+  // work rather than reacting to it: the agent reads the ticket first.
+  const opening = activeSession ? undefined : buildPrompt(project, path, ticket);
+  if (opening) {
+    store.appendLog(dir, path, ticketId, { kind: "user", text: opening, ts: Date.now() });
+  }
+  store.appendLog(dir, path, ticketId, { kind: "user", text: message, ts: Date.now() });
+  store.updateTicket(dir, path, ticketId, (t) => ({ ...t, status: "running" }));
 
   const { ok, text, aborted } = await runWithNotes(dir, path, ticketId, {
-    // With no session the ticket never ran, so this is the human opening the
-    // work rather than reacting to it.
     prompt: activeSession
       ? `Human review feedback on your work for this ticket:\n\n${message}\n\nAddress the feedback, then end with a short summary of what you changed.`
-      : `${buildPrompt(project, path, ticket)}\n\nThe human is starting this ticket with a request:\n\n${message}`,
+      : `${opening}\n\nThe human is starting this ticket with a request:\n\n${message}`,
     sessionId: activeSession,
     model,
   });
