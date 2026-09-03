@@ -85,10 +85,15 @@ function Transcript() {
       {chat.map((m, i) => {
         switch (m.kind) {
           case "user":
+            // The two modes do different things with what was sent, so each
+            // message carries its mode as a tint: amber for the board (panel),
+            // sky for the chat (act).
             return (
               <p
                 key={i}
-                className="bg-zinc-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap"
+                className={`rounded bg-zinc-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap shadow-md ${
+                  m.mode === "panel" ? "shadow-amber-200" : "shadow-sky-200"
+                }`}
               >
                 <span className="text-zinc-400">&gt; </span>
                 {m.text}
