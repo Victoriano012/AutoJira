@@ -6,7 +6,7 @@ import ActSheet from "@/components/ActSheet";
 import BoardView from "@/components/BoardView";
 import BottomBar from "@/components/BottomBar";
 import Toolbar from "@/components/Toolbar";
-import { useBackSwipe } from "@/components/useBackSwipe";
+import { useSwipeNav } from "@/components/useSwipeNav";
 import { useStore } from "@/lib/store";
 import { openProject, startAutosave } from "@/lib/sync";
 
@@ -26,7 +26,7 @@ export default function Home() {
   const projectLoaded = useStore((s) => s.projectLoaded);
   const mode = useStore((s) => s.mode);
   const mainRef = useRef<HTMLElement>(null);
-  useBackSwipe(mainRef);
+  useSwipeNav(mainRef);
 
   useEffect(() => {
     startAutosave();

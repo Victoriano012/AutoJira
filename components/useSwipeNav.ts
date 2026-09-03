@@ -4,8 +4,10 @@ import { useEffect, type RefObject } from "react";
 import { useStore } from "@/lib/store";
 
 /**
- * Two-finger horizontal swipe (wheel events with dominant deltaX) goes back:
- * from the chat to the board, from the board to the projects. Native
+ * Two-finger swipes (wheel events) move between views. Horizontal (dominant
+ * deltaX) goes back: from the chat to the board, from the board to the
+ * projects. Vertical goes between the board and the chat: fingers travelling
+ * up pull the chat up, travelling down send it back down. Native
  * capture-phase, non-passive listener so it can preventDefault (which kills
  * the browser's own history swipe) for the horizontal axis.
  *
@@ -35,13 +37,84 @@ function scrollsHorizontally(from: EventTarget | null, until: HTMLElement): bool
   return false;
 }
 
-export function useBackSwipe(ref: RefObject<HTMLElement | null>): void {
+/** A vertical scroller between the event target and the listener that can
+ * still move the way the fingers push owns the gesture. At its end (or with
+ * nothing to scroll) the same swipe is a request to change view. */
+function scrollsVertically(from: EventTarget | null, until: HTMLElement, dy: number): boolean {
+  let el = from instanceof Element ? from : null;
+  while (el && el !== until) {
+    if (el.scrollHeight > el.clientHeight + 1) {
+      const overflow = getComputedStyle(el).overflowY;
+      if (overflow === "auto" || overflow === "scroll") {
+        const room = dy > 0 ? el.scrollHeight - el.clientHeight - el.scrollTop : el.scrollTop;
+        if (room > 1) return true;
+      }
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/** The vertical gesture's own clock and lock (same shape and reasons as
+ * `gesture`). `scrolling`: this burst started by scrolling a list, so the
+ * rest of it — including the inertia that runs past the list's end — is
+ * scrolling too, not a view change. */
+const vertical = { acc: 0, locked: false, scrolling: false, last: -Infinity, dir: 0 };
+
+function onVerticalWheel(e: WheelEvent, el: HTMLElement): void {
+  const target = e.target;
+  if (!(target instanceof Node) || !el.contains(target)) return;
+  if (e.timeStamp - vertical.last > 150) {
+    vertical.acc = 0;
+    vertical.locked = false;
+    vertical.scrolling = false;
+  }
+  // Fingers back on the pad, pushing the other way, is a new gesture even
+  // while the last one's momentum is still arriving (momentum never changes
+  // sign). Otherwise an up-then-down has to wait the momentum out — or be
+  // stopped with a tap — before the down counts.
+  if (vertical.locked && Math.sign(e.deltaY) === -vertical.dir) {
+    vertical.acc = 0;
+    vertical.locked = false;
+    vertical.scrolling = false;
+  }
+  vertical.last = e.timeStamp;
+  if (vertical.scrolling) return;
+  if (vertical.locked) {
+    // The tail of a swipe that already switched: keep it off whatever list
+    // now sits under the fingers.
+    e.preventDefault();
+    return;
+  }
+  if (scrollsVertically(target, el, e.deltaY)) {
+    vertical.scrolling = true;
+    return;
+  }
+  e.preventDefault();
+  vertical.acc += e.deltaY;
+  if (Math.abs(vertical.acc) > 80) {
+    // Positive deltaY is fingers moving up under the default (natural)
+    // scroll direction: the motion of pulling the sheet up from the bottom.
+    const up = vertical.acc > 0;
+    vertical.locked = true;
+    vertical.dir = up ? 1 : -1;
+    vertical.acc = 0;
+    const st = useStore.getState();
+    if (up && st.mode === "panel") st.setMode("act");
+    else if (!up && st.mode === "act") st.setMode("panel");
+  }
+}
+
+export function useSwipeNav(ref: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
       const el = ref.current;
       if (!el) return;
       if (e.ctrlKey) return; // pinch zoom stays as is
-      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical scroll stays as is
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) {
+        onVerticalWheel(e, el);
+        return;
+      }
       const target = e.target;
       // The navigation this gesture just caused puts a click shield over the
       // view for the flight (see `lib/view-zoom.ts`), so the rest of the burst
