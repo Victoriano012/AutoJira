@@ -35,15 +35,11 @@ export default function Toolbar() {
       />
 
       <div className="ml-auto shrink-0 flex items-center gap-3">
-        {/* Shows the view you would switch to, not the one you are in. */}
-        <button
-          className="rounded-lg px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
-          onClick={toggleMode}
-          title="Switch view (Ctrl+M)"
-          aria-pressed={mode === "act"}
-        >
-          {mode === "act" ? <BoardIcon /> : <ChatIcon />}
-        </button>
+        {/* Slot kept at icon size whether or not it holds the spinner, so the
+            row doesn't shift when a run starts. */}
+        <span className="h-5 w-5" title={running ? "Run in progress" : undefined}>
+          {running && <Spinner className="h-5 w-5" />}
+        </span>
         {running ? (
           <button
             className="rounded-lg px-2 py-1.5 text-red-600 hover:bg-zinc-200 hover:text-red-500"
@@ -62,11 +58,15 @@ export default function Toolbar() {
             <PlayIcon />
           </button>
         )}
-        {/* Slot kept at icon size whether or not it holds the spinner, so the
-            row doesn't shift when a run starts. */}
-        <span className="h-5 w-5" title={running ? "Run in progress" : undefined}>
-          {running && <Spinner className="h-5 w-5" />}
-        </span>
+        {/* Shows the view you would switch to, not the one you are in. */}
+        <button
+          className="rounded-lg px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
+          onClick={toggleMode}
+          title="Switch view (Ctrl+M)"
+          aria-pressed={mode === "act"}
+        >
+          {mode === "act" ? <BoardIcon /> : <ChatIcon />}
+        </button>
         <button
           className="rounded-lg px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
           onClick={() => setShowSettings(true)}
