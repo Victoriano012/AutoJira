@@ -28,7 +28,7 @@ export default function Toolbar() {
         <Logo size={26} className="text-zinc-900" />
       </button>
       <input
-        className="bg-transparent text-lg font-semibold outline-none rounded px-1 focus:bg-zinc-100 flex-1 min-w-40"
+        className="bg-transparent text-2xl font-semibold outline-none rounded px-1 focus:bg-zinc-100 flex-1 min-w-40"
         value={project.name}
         onChange={(e) => setProject({ name: e.target.value })}
         aria-label="Project name"
