@@ -156,6 +156,15 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
       model,
       maxTurns: req.maxTurns ?? 150,
       abortController: kill,
+      // Fable models get a 1M-token window on the first-party API and only
+      // auto-compact near it, so every turn re-reads a huge context; pin the
+      // window to 200k. `env` replaces the child env, so process.env must
+      // come along.
+      env: {
+        ...(process.env as Record<string, string>),
+        CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
+        CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
+      },
       ...(req.writeAccess
         ? {
             permissionMode: "bypassPermissions" as const,
