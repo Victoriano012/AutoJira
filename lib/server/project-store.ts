@@ -37,10 +37,13 @@ const WRITE_DEBOUNCE_MS = 250;
 
 function entry(dir: string): Entry | null {
   const found = entries.get(dir);
-  if (found) return found;
+  // The map outlives hot reloads, so it can still hold a project loaded by the
+  // graph-era code; only a fresh read runs the on-disk migration.
+  if (found && Array.isArray(found.project.tickets)) return found;
+  if (found?.timer) clearTimeout(found.timer);
   const project = readProject(dir);
   if (!project) return null;
-  const fresh: Entry = { project, timer: null, listeners: new Set() };
+  const fresh: Entry = { project, timer: null, listeners: found?.listeners ?? new Set() };
   entries.set(dir, fresh);
   return fresh;
 }
