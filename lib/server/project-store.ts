@@ -1,5 +1,5 @@
 import { readProject, writeProject } from "../projects-fs";
-import type { ChatEntry, LogEntry, Mode, Project, Ticket } from "../types";
+import type { AgentRequest, ChatEntry, LogEntry, Mode, Project, Ticket } from "../types";
 
 /**
  * The server process's copy of every open project. Runs live here, so this —
@@ -16,7 +16,8 @@ export type ProjectEvent =
   /** Set changes made on the server (the project agent's tickets, deletions). */
   | { type: "tickets"; added: Ticket[]; removed: string[] }
   | { type: "chat"; entries: ChatEntry[] }
-  | { type: "agent"; busy: boolean; mode: Mode | null; sessionId?: string }
+  /** The project agent's turn began or ended, or its request stack changed. */
+  | { type: "agent"; busy: boolean; mode: Mode | null; requests: AgentRequest[] }
   | { type: "notes"; notes: string[] }
   | { type: "runs" };
 

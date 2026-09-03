@@ -4,6 +4,18 @@ export type TicketStatus = "todo" | "running" | "review" | "done" | "error";
  * board (panel) or having it do the work directly (act). */
 export type Mode = "panel" | "act";
 
+/** One message sent to the project agent, waiting its turn or taking it. The
+ * server keeps them in memory (see project-agent.ts); the browser draws the
+ * stack under the board. A request that finished cleanly is simply gone. */
+export interface AgentRequest {
+  id: string;
+  mode: Mode;
+  text: string;
+  state: "queued" | "running" | "error";
+  /** Why the turn failed; set with `state: "error"` only. */
+  error?: string;
+}
+
 export interface Attachment {
   id: string;
   name: string;

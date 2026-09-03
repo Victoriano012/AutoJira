@@ -1,7 +1,7 @@
 "use client";
 
 import { useStore } from "./store";
-import type { Mode } from "./types";
+import type { AgentRequest, Mode } from "./types";
 
 /**
  * Runs execute in the server process, not in this tab: this module is the thin
@@ -19,15 +19,16 @@ export interface RunStateSnapshot {
   active: string[];
   /** Ids of tickets with a live agent session. */
   tickets: string[];
-  /** The project agent: mid-turn or idle, and in which mode it was asked. */
-  agent: { busy: boolean; mode: Mode | null };
+  /** The project agent: mid-turn or idle, in which mode it was asked, and the
+   * requests it has running, waiting or failed. */
+  agent: { busy: boolean; mode: Mode | null; requests: AgentRequest[] };
 }
 
 let state: RunStateSnapshot = {
   loops: [],
   active: [],
   tickets: [],
-  agent: { busy: false, mode: null },
+  agent: { busy: false, mode: null, requests: [] },
 };
 // Watchers of the run state (the toolbar, the bottom bar). Pushed, not polled.
 const runListeners = new Set<() => void>();
@@ -64,6 +65,12 @@ export function isTicketRunLive(ticketId: string): boolean {
 /** True while the project agent is mid-turn. */
 export function agentBusy(): boolean {
   return state.agent.busy;
+}
+
+/** The project agent's stack: the request running, the ones waiting behind
+ * it and any that failed, in the order they were sent. */
+export function agentRequests(): AgentRequest[] {
+  return state.agent.requests;
 }
 
 let flushProject: () => Promise<void> = async () => {};
@@ -182,19 +189,14 @@ export function settleZombies(): void {
   void call("settleZombies");
 }
 
-/** One turn of the project agent, in `mode`. The reply streams back through
- * the live subscription as chat entries; resolves false when the agent is
- * already busy (409) or the request never got there. */
-export async function sendToAgent(mode: Mode, message: string): Promise<boolean> {
+async function agentAction(body: object): Promise<boolean> {
   const dir = useStore.getState().projectId;
   if (!dir) return false;
-  pokeStream();
-  await flushProject();
   try {
     const res = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dir, action: "send", mode, message }),
+      body: JSON.stringify({ dir, ...body }),
     });
     return res.ok;
   } catch {
@@ -202,12 +204,28 @@ export async function sendToAgent(mode: Mode, message: string): Promise<boolean>
   }
 }
 
+/** Queue one message for the project agent, in `mode`; it runs once the
+ * turns before it are done. The reply streams back through the live
+ * subscription as chat entries; resolves false when the request never got
+ * there. */
+export async function sendToAgent(mode: Mode, message: string): Promise<boolean> {
+  if (!useStore.getState().projectId) return false;
+  pokeStream();
+  await flushProject();
+  return agentAction({ action: "send", mode, message });
+}
+
+/** Stop the turn in progress; the queue moves on. */
 export function stopAgent(): void {
-  const dir = useStore.getState().projectId;
-  if (!dir) return;
-  void fetch("/api/agent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dir, action: "stop" }),
-  }).catch(() => {});
+  void agentAction({ action: "stop" });
+}
+
+/** Drop a waiting or failed request, or stop the running one. */
+export function cancelRequest(id: string): void {
+  void agentAction({ action: "cancel", id });
+}
+
+/** Send a failed request again, unchanged. */
+export function retryRequest(id: string): void {
+  void agentAction({ action: "retry", id });
 }

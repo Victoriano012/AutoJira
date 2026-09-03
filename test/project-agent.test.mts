@@ -74,3 +74,44 @@ test("the board tool accepts an empty list and insists on files", () => {
     false
   );
 });
+
+test("messages queue behind a running turn, in order, and cancelling drops one", async () => {
+  const fs = await import("node:fs");
+  const { writeProject } = await import("../lib/projects-fs.ts");
+  const store = await import("../lib/server/project-store.ts");
+  const { registry, runState } = await import("../lib/server/runs.ts");
+  const { cancelRequest, sendToAgent } = await import("../lib/server/project-agent.ts");
+  const { defaultProject } = await import("../lib/types.ts");
+  const dir =
+    "/private/tmp/claude-501/-Users-victor-Documents-personal-AutoProject/4fe223bd-0cee-4edf-931c-01648c66e1ed/scratchpad/agent-queue";
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  writeProject(dir, defaultProject("Queue", dir));
+  const events: string[] = [];
+  const unsubscribe = store.subscribe(dir, (e) => events.push(e.type));
+  // A turn in progress: nothing sent now may start, and the agent SDK is never reached.
+  registry.agents.set(dir, new AbortController());
+  try {
+    const a = sendToAgent(dir, "panel", "Add a cart");
+    const b = sendToAgent(dir, "panel", "Add checkout");
+    assert.deepEqual(
+      runState(dir).agent.requests.map((r) => [r.text, r.state]),
+      [["Add a cart", "queued"], ["Add checkout", "queued"]]
+    );
+    // Nothing waiting was said to the agent yet; every change told the feed.
+    assert.equal(store.getProject(dir)!.chat.length, 0);
+    assert.ok(events.includes("agent"));
+
+    cancelRequest(dir, a.id);
+    assert.deepEqual(runState(dir).agent.requests.map((r) => r.id), [b.id]);
+    cancelRequest(dir, b.id);
+    assert.deepEqual(runState(dir).agent.requests, []);
+    assert.equal(registry.agents.has(dir), true); // the live turn is not the queue's to stop
+  } finally {
+    unsubscribe();
+    registry.agents.delete(dir);
+    registry.requests.delete(dir);
+    store.forget(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

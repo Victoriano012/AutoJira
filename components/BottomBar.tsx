@@ -5,6 +5,7 @@ import { agentBusy, sendToAgent, stopAgent, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
 import { StopSquare } from "./icons";
+import RequestStack from "./RequestStack";
 
 /** Unsent text, per project, kept outside React so a remount can't eat it.
  * sessionStorage: it belongs to this tab, and nothing here needs a server. */
@@ -41,30 +42,43 @@ export default function BottomBar() {
     writeDraft(projectId, v);
   };
 
+  // On the board a message queues behind the one being worked on — the stack
+  // above the bar shows where it stands — so the bar never closes there. Over
+  // the chat there is no stack, so it waits for the turn instead.
+  const closed = busy && mode === "act";
+
   async function send() {
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text || closed) return;
     setDraft("");
-    // Never reached the server (or it was already busy): the words are still
-    // the person's to send again.
+    // Never reached the server: the words are still the person's to send again.
     if (!(await sendToAgent(mode, text))) setDraft(text);
   }
 
+  /** Words handed back by a dropped request go into the box, after any typing. */
+  const takeBack = (text: string) =>
+    setDraft(draft.trim() ? `${draft.trim()} ${text}` : text);
+
   return (
-    <div className="flex shrink-0 items-center gap-2" style={{ margin: "0 5px 5px" }}>
-      <ChatInput
-        value={draft}
-        onChange={setDraft}
-        onSend={send}
-        disabled={busy}
-        placeholder={
-          mode === "act"
-            ? "What should be done?"
-            : "What should be changed? AI will turn it into tickets and get to work"
-        }
-        sendTitle={mode === "act" ? "Send" : "Send — AI will turn it into tickets"}
-      />
-      {busy && <StopSquare onClick={stopAgent} title="Stop the agent" />}
+    <div className="shrink-0" style={{ margin: "0 5px 5px" }}>
+      {/* The chat sheet has its own transcript; the stack is the board's. */}
+      {mode === "panel" && <RequestStack onDropped={takeBack} />}
+      <div className="flex items-center gap-2">
+        <ChatInput
+          value={draft}
+          onChange={setDraft}
+          onSend={send}
+          disabled={closed}
+          placeholder={
+            mode === "act"
+              ? "What should be done?"
+              : "What should be changed? AI will turn it into tickets and get to work"
+          }
+          sendTitle={mode === "act" ? "Send" : "Send — AI will turn it into tickets"}
+        />
+        {/* Stopping a board request is its row's ✕; the bar's square is the chat's. */}
+        {closed && <StopSquare onClick={stopAgent} title="Stop the agent" />}
+      </div>
     </div>
   );
 }

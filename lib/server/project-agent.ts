@@ -1,7 +1,13 @@
 import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { selectedModel } from "../config";
 import { providerForModel } from "../models";
-import { isTicketDone, type ChatEntry, type Mode, type Project } from "../types";
+import {
+  type AgentRequest,
+  type ChatEntry,
+  isTicketDone,
+  type Mode,
+  type Project,
+} from "../types";
 import { streamAgent } from "./agent";
 import { addTicketsToBoard, boardServer, REQUEST_SCHEMA } from "./board-tools";
 import * as store from "./project-store";
@@ -12,14 +18,12 @@ import { ensureLoaded, notifyAgent, registry } from "./runs";
  * turn, told per turn whether it is planning tickets (panel) or doing the work
  * itself (act). Both modes write to one transcript, `Project.chat`, streamed to
  * the browser through the project feed; the browser only ever asks for a turn.
+ *
+ * Turns are taken one at a time from a per-project queue (`registry.requests`),
+ * in the order the messages were sent: one conversation, so a second message
+ * waits for the first to finish rather than being refused. The queue lives in
+ * memory beside the live turn; a server restart forgets both.
  */
-
-/** Thrown when a turn is asked for while one is running: the route says 409. */
-export class AgentBusyError extends Error {
-  constructor() {
-    super("The project agent is busy");
-  }
-}
 
 export const ACT_AGENTS: Record<string, AgentDefinition> = {
   worker: {
@@ -97,36 +101,104 @@ function say(dir: string, mode: Mode, entry: Omit<ChatEntry, "ts" | "mode">) {
   store.appendChat(dir, [{ ...entry, ts: Date.now(), mode }]);
 }
 
-/** Start one turn of the project agent. Resolves when the turn is over; the
- * reply itself travels through the project feed. Throws `AgentBusyError`
- * synchronously if a turn is already running. */
-export function sendToAgent(dir: string, mode: Mode, message: string): Promise<void> {
-  if (registry.agents.has(dir)) throw new AgentBusyError();
-  if (!ensureLoaded(dir)) throw new Error(`No project at ${dir}`);
-  const ctrl = new AbortController();
-  registry.agents.set(dir, ctrl);
-  registry.agentMode.set(dir, mode);
-  say(dir, mode, { kind: "user", text: message });
-  notifyAgent(dir);
-  return turn(dir, mode, message, ctrl.signal).finally(() => {
-    registry.agents.delete(dir);
-    registry.agentMode.delete(dir);
-    notifyAgent(dir);
-  });
+function requests(dir: string): AgentRequest[] {
+  let list = registry.requests.get(dir);
+  if (!list) registry.requests.set(dir, (list = []));
+  return list;
 }
 
+/** Queue one message for the project agent, in `mode`. It runs as soon as the
+ * turns before it are done; the reply travels through the project feed. */
+export function sendToAgent(dir: string, mode: Mode, message: string): AgentRequest {
+  if (!ensureLoaded(dir)) throw new Error(`No project at ${dir}`);
+  const req: AgentRequest = { id: crypto.randomUUID(), mode, text: message, state: "queued" };
+  requests(dir).push(req);
+  notifyAgent(dir);
+  void pump(dir);
+  return req;
+}
+
+/** Take the next waiting request, if no turn is running. Every finished turn
+ * calls this again, which is what drains the queue. */
+async function pump(dir: string): Promise<void> {
+  if (registry.agents.has(dir)) return;
+  const req = requests(dir).find((r) => r.state === "queued");
+  if (!req) return;
+  const ctrl = new AbortController();
+  registry.agents.set(dir, ctrl);
+  registry.agentMode.set(dir, req.mode);
+  req.state = "running";
+  // The transcript shows the message when the agent actually hears it, so it
+  // reads in the order the agent did — and a request cancelled while waiting
+  // was never said at all.
+  say(dir, req.mode, { kind: "user", text: req.text });
+  notifyAgent(dir);
+  let error: string | null = null;
+  try {
+    error = await turn(dir, req.mode, req.text, ctrl.signal);
+  } catch (err) {
+    error = String(err);
+  } finally {
+    registry.agents.delete(dir);
+    registry.agentMode.delete(dir);
+    // A stopped turn is over and done with; a failed one stays in the stack
+    // with its error until the person retries or dismisses it.
+    if (error !== null && !ctrl.signal.aborted) {
+      req.state = "error";
+      req.error = error;
+    } else {
+      dropRequest(dir, req.id);
+    }
+    notifyAgent(dir);
+    void pump(dir);
+  }
+}
+
+function dropRequest(dir: string, id: string): void {
+  const list = requests(dir);
+  const i = list.findIndex((r) => r.id === id);
+  if (i >= 0) list.splice(i, 1);
+}
+
+/** Abort the running turn; the queue moves on to the next request. */
 export function stopAgent(dir: string): void {
   registry.agents.get(dir)?.abort();
 }
 
-async function turn(dir: string, mode: Mode, message: string, signal: AbortSignal) {
+/** The ✕ on a request: a waiting or failed one is dropped; the running one is
+ * stopped (and dropped by the turn's own wind-down). */
+export function cancelRequest(dir: string, id: string): void {
+  const req = requests(dir).find((r) => r.id === id);
+  if (!req) return;
+  if (req.state === "running") return stopAgent(dir);
+  dropRequest(dir, id);
+  notifyAgent(dir);
+}
+
+/** Send a failed request again, unchanged, at its place in the stack. */
+export function retryRequest(dir: string, id: string): void {
+  const req = requests(dir).find((r) => r.id === id && r.state === "error");
+  if (!req) return;
+  req.state = "queued";
+  delete req.error;
+  notifyAgent(dir);
+  void pump(dir);
+}
+
+/** One turn. Resolves with the failure the person was shown, or null. */
+async function turn(
+  dir: string,
+  mode: Mode,
+  message: string,
+  signal: AbortSignal
+): Promise<string | null> {
   const model = selectedModel();
   const provider = providerForModel(model);
   // Codex and Gemini have no in-process MCP: their panel turn answers with
   // the ticket list as structured output instead of calling the board tool.
   const fallback = mode === "panel" && provider !== "claude";
 
-  const attempt = async (fresh: boolean): Promise<"done" | "retry"> => {
+  const attempt = async (fresh: boolean): Promise<string | null | "retry"> => {
     const project = store.getProject(dir)!;
     const prompt =
       (mode === "panel" ? panelPreamble : actPreamble)(project, message) +
@@ -177,18 +249,19 @@ async function turn(dir: string, mode: Mode, message: string, signal: AbortSigna
     }
     if (signal.aborted) {
       say(dir, mode, { kind: "info", text: "Stopped by user" });
-      return "done";
+      return null;
     }
-    if (failed === null) return "done";
+    if (failed === null) return null;
     // The stored session can be gone (a wiped ~/.claude, another machine's
     // id): forget it and start the conversation over, once.
     if (sessionId && !produced) return "retry";
     say(dir, mode, { kind: "error", text: failed });
-    return "done";
+    return failed;
   };
 
-  if ((await attempt(false)) === "retry") {
-    store.setAgentSession(dir, undefined);
-    await attempt(true);
-  }
+  const first = await attempt(false);
+  if (first !== "retry") return first;
+  store.setAgentSession(dir, undefined);
+  const second = await attempt(true);
+  return second === "retry" ? null : second; // a fresh attempt has no session to retry
 }

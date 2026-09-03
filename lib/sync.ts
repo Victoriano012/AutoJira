@@ -8,7 +8,7 @@ import {
 } from "./runner";
 import { useStore } from "./store";
 import { mergeRunState, runEdits } from "./run-state";
-import { ChatEntry, LogEntry, Mode, Project, Ticket } from "./types";
+import { AgentRequest, ChatEntry, LogEntry, Mode, Project, Ticket } from "./types";
 
 async function createOrImport(body: { name?: string; path?: string }) {
   const res = await fetch("/api/projects", {
@@ -83,7 +83,7 @@ type StreamEvent =
   | { type: "log"; id: string; entries: LogEntry[] }
   | { type: "tickets"; added: Ticket[]; removed: string[] }
   | { type: "chat"; entries: ChatEntry[] }
-  | { type: "agent"; busy: boolean; mode: Mode | null; sessionId?: string }
+  | { type: "agent"; busy: boolean; mode: Mode | null; requests: AgentRequest[] }
   | { type: "notes"; notes: string[] }
   | { type: "ping" };
 
@@ -91,7 +91,7 @@ const NO_RUNS: RunStateSnapshot = {
   loops: [],
   active: [],
   tickets: [],
-  agent: { busy: false, mode: null },
+  agent: { busy: false, mode: null, requests: [] },
 };
 
 let source: EventSource | null = null;
@@ -203,7 +203,10 @@ function openStream(dir: string): void {
     } else if (msg.type === "runs") {
       setRuns(msg.runs);
     } else if (msg.type === "agent") {
-      setRuns({ ...lastRuns, agent: { busy: msg.busy, mode: msg.mode } });
+      setRuns({
+        ...lastRuns,
+        agent: { busy: msg.busy, mode: msg.mode, requests: msg.requests },
+      });
     } else if (msg.type === "ticket") {
       applyRemote(() => store.updateTicket(msg.id, (t) => ({ ...t, ...msg.patch })));
     } else if (msg.type === "log") {
