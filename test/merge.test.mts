@@ -22,6 +22,7 @@ const p = (tickets: Ticket[], over: Partial<Project> = {}): Project => ({
   workspaceDir: "/tmp/p",
   notes: [],
   tickets,
+  workers: [],
   chat: [],
   ...over,
 });

@@ -5,9 +5,10 @@ import type { Project, Ticket, TicketStatus } from "./types";
  *
  * Runs execute in the server, so the server is the only writer of the fields a
  * run produces — status, log, sessionId, resultSummary, stats — and, since the
- * project agent adds and removes tickets there too, of the ticket set itself
- * and of its own conversation. The browser is the only writer of the user
- * fields (titles, descriptions, files, attachments, paused, notes).
+ * project agent adds and removes tickets there too, of the ticket set itself,
+ * of the workers it assigns them to and of its own conversation. The browser
+ * is the only writer of the user fields (titles, descriptions, files,
+ * attachments, paused, notes).
  *
  * The browser still PUTs the whole project (autosave), so the server merges:
  * user fields from the payload, ticket set and run fields from its own state.
@@ -22,6 +23,7 @@ function runFields(t: Ticket): Partial<Ticket> {
     status: t.status,
     log: t.log,
     ...(t.statusChangedAt !== undefined ? { statusChangedAt: t.statusChangedAt } : {}),
+    ...(t.workerId !== undefined ? { workerId: t.workerId } : {}),
     ...(t.sessionId !== undefined ? { sessionId: t.sessionId } : {}),
     ...(t.resultSummary !== undefined ? { resultSummary: t.resultSummary } : {}),
     ...(t.stats !== undefined ? { stats: t.stats } : {}),
@@ -32,6 +34,7 @@ function runFields(t: Ticket): Partial<Ticket> {
 function projectRunFields(p: Project): Partial<Project> {
   return {
     chat: p.chat,
+    workers: p.workers,
     ...(p.agentSessionId !== undefined ? { agentSessionId: p.agentSessionId } : {}),
   };
 }

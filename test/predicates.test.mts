@@ -10,6 +10,7 @@ import {
   isTicketDone,
   notReadyReason,
   stuckCards,
+  workerBusyOn,
 } from "../lib/types.ts";
 import type { Ticket } from "../lib/types.ts";
 
@@ -167,4 +168,23 @@ test("the scheduler's refusals and the runnable-work check line up", () => {
   assert.equal(hasRunnableWork(tickets), true);
   assert.equal(hasRunnableWork(tickets.filter((x) => x.id !== "go")), false);
   assert.deepEqual(stuckCards(tickets), []);
+});
+
+test("two tickets of one worker never run at once", () => {
+  const tickets = [
+    t({ id: "A", status: "running", workerId: "w1" }),
+    t({ id: "B", workerId: "w1" }),
+    t({ id: "C", workerId: "w2" }),
+    t({ id: "old" }), // from before workers: shares nobody's conversation
+  ];
+  assert.equal(workerBusyOn(tickets, "B")?.id, "A");
+  assert.equal(notReadyReason(tickets, tickets[1]), "waiting for its worker, still on “A”");
+  assert.equal(notReadyReason(tickets, tickets[2]), null);
+  assert.equal(notReadyReason(tickets, tickets[3]), null);
+  assert.deepEqual(stuckCards(tickets), []);
+  // Only a card in Working holds its worker: one in review has let go.
+  const asked = [t({ id: "A", status: "review", workerId: "w1" }), t({ id: "B", workerId: "w1" })];
+  assert.equal(workerBusyOn(asked, "B"), null);
+  assert.equal(hasRunnableWork(asked), true);
+  assert.equal(hasRunnableWork(tickets.slice(0, 2)), false);
 });

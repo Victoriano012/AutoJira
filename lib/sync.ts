@@ -8,7 +8,7 @@ import {
 } from "./runner";
 import { useStore } from "./store";
 import { mergeRunState, runEdits } from "./run-state";
-import { AgentRequest, ChatEntry, LogEntry, Mode, Project, Ticket } from "./types";
+import { AgentRequest, ChatEntry, LogEntry, Mode, Project, Ticket, Worker } from "./types";
 
 async function createOrImport(body: { name?: string; path?: string }) {
   const res = await fetch("/api/projects", {
@@ -85,6 +85,7 @@ type StreamEvent =
   | { type: "chat"; entries: ChatEntry[] }
   | { type: "agent"; busy: boolean; mode: Mode | null; requests: AgentRequest[] }
   | { type: "notes"; notes: string[] }
+  | { type: "workers"; workers: Worker[] }
   | { type: "ping" };
 
 const NO_RUNS: RunStateSnapshot = {
@@ -222,6 +223,8 @@ function openStream(dir: string): void {
       applyRemote(() => store.appendChat(msg.entries));
     } else if (msg.type === "notes") {
       applyRemote(() => store.setNotes(msg.notes));
+    } else if (msg.type === "workers") {
+      applyRemote(() => store.setProject({ workers: msg.workers }));
     }
   };
 }

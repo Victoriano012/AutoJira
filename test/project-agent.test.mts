@@ -25,6 +25,7 @@ const p = (over: Partial<Project> = {}): Project => ({
   workspaceDir: "/tmp/shop",
   notes: [],
   tickets: [],
+  workers: [],
   chat: [],
   ...over,
 });
@@ -50,29 +51,57 @@ test("a panel turn is told the granularity rules and the board tool", () => {
   assert.match(text, /Prefer fewer, larger tickets/);
   assert.match(text, /tightly coupled .* is ONE ticket/);
   assert.match(text, /`files` lists every workspace-relative path/);
+  assert.match(text, /`worker` says who runs the ticket/);
   assert.match(text, /Do not modify files in this mode/);
   assert.match(text, /Human:\nAdd a cart$/);
   // The board state names the unsolved tickets only.
   assert.match(text, /- open \[todo\]/);
   assert.doesNotMatch(text, /- done \[done\]/);
+  // The workers, by the number the planner names them with.
+  assert.match(text, /There are no workers yet/);
+  const staffed = panelPreamble(
+    p({ workers: [{ id: "w1", n: 1, description: "Checkout flow" }] }),
+    "Add a cart"
+  );
+  assert.match(staffed, /- #1 — Checkout flow/);
   // The tool names as the model sees them live in the stable role text.
   assert.match(systemAppend(p()), /mcp__board__add_tickets/);
   assert.match(systemAppend(p()), /mcp__board__set_notes/);
 });
 
-test("the board tool accepts an empty list and insists on files", () => {
+test("the board tool accepts an empty list and insists on files and a worker", () => {
   const schema = z.object(ADD_TICKETS_SHAPE);
   assert.equal(schema.safeParse({ tickets: [] }).success, true);
+  const cart = { title: "Cart", description: "Build it.", files: ["src/cart.tsx"] };
   assert.equal(
-    schema.safeParse({
-      tickets: [{ title: "Cart", description: "Build it.", files: ["src/cart.tsx"] }],
-    }).success,
+    schema.safeParse({ tickets: [{ ...cart, worker: { existing: 1 } }] }).success,
     true
   );
+  assert.equal(
+    schema.safeParse({ tickets: [{ ...cart, worker: { new: "Checkout flow" } }] }).success,
+    true
+  );
+  assert.equal(schema.safeParse({ tickets: [cart] }).success, false);
   assert.equal(
     schema.safeParse({ tickets: [{ title: "Cart", description: "Build it." }] }).success,
     false
   );
+});
+
+test("a ticket prompt names the worker, and its history once it has one", () => {
+  const worker = { id: "w1", n: 2, description: "Checkout flow" };
+  const ticket = t({ id: "a", title: "Add a cart", workerId: "w1" });
+  const fresh = ticketPrompt(p({ workers: [worker], tickets: [ticket] }), ticket);
+  assert.match(fresh, /You are worker #2 \(Checkout flow\)\./);
+  assert.doesNotMatch(fresh, /Earlier tickets in this conversation/);
+  const seasoned = ticketPrompt(
+    p({ workers: [{ ...worker, sessionId: "claude:s1" }], tickets: [ticket] }),
+    ticket
+  );
+  assert.match(seasoned, /Earlier tickets in this conversation are done; this is a new ticket/);
+  // A ticket from before workers is told nothing about them.
+  const legacy = t({ id: "b" });
+  assert.doesNotMatch(ticketPrompt(p({ tickets: [legacy] }), legacy), /worker/);
 });
 
 test("messages queue behind a running turn, in order, and cancelling drops one", async () => {

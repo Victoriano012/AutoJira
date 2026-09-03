@@ -11,6 +11,7 @@ import {
 import { streamAgent } from "./agent";
 import { addTicketsToBoard, boardServer, REQUEST_SCHEMA } from "./board-tools";
 import * as store from "./project-store";
+import type { PlannedTicket } from "./project-store";
 import { ensureLoaded, notifyAgent, registry } from "./runs";
 
 /**
@@ -68,13 +69,24 @@ function boardState(project: Project): string {
     : `The board has no unsolved tickets.`;
 }
 
+/** The workers as the planner sees them, so it can name one by number. */
+function workerList(project: Project): string {
+  return project.workers.length
+    ? `Workers (each a long-lived coding agent with its own conversation):\n${project.workers
+        .map((w) => `- #${w.n} — ${w.description}`)
+        .join("\n")}`
+    : `There are no workers yet.`;
+}
+
 export function panelPreamble(project: Project, message: string): string {
   return [
     `MODE: PANEL`,
     boardState(project),
+    workerList(project),
     `Rules:
 - Prefer fewer, larger tickets: one ticket per coherent change an agent can finish in one session. Work that is tightly coupled (same feature, same files, one depends on the other) is ONE ticket, never several.
 - \`files\` lists every workspace-relative path the ticket will create or modify; the board runs tickets sharing a file one after another.
+- \`worker\` says who runs the ticket: {"existing": n} when a worker's description clearly covers the ticket's area, otherwise {"new": "<description>"}. A description is under 12 words and names an area of the codebase or a kind of work, not the single ticket, so later tickets can be matched to it. New workers are numbered on from the last existing one, so a later ticket in the same call can name a worker an earlier one created ({"new": ...} on the first, {"existing": n} on the rest). A worker's tickets run one after another, in one conversation.
 - If the message is a question, a preference or needs no code, call add_tickets with [] (or not at all) and answer in one or two sentences. If it states a lasting preference ('always use pnpm', 'never touch /legacy'), call set_notes with the full updated list.
 - Do not modify files in this mode.`,
     `Human:\n${message}`,
@@ -235,9 +247,7 @@ async function turn(
         } else if (ev.type === "result") {
           if (!ev.ok) failed = ev.text;
           else if (fallback && ev.structuredOutput) {
-            const { tickets } = ev.structuredOutput as {
-              tickets: { title: string; description: string; files: string[] }[];
-            };
+            const { tickets } = ev.structuredOutput as { tickets: PlannedTicket[] };
             addTicketsToBoard(dir, tickets);
           }
         } else if (ev.type === "error") {

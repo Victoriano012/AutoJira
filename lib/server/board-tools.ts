@@ -13,7 +13,13 @@ import { autoRun } from "./runs";
 
 export const ADD_TICKETS_SHAPE = {
   tickets: z.array(
-    z.object({ title: z.string(), description: z.string(), files: z.array(z.string()) })
+    z.object({
+      title: z.string(),
+      description: z.string(),
+      files: z.array(z.string()),
+      // the worker to run it: an existing one by number, or a new one described
+      worker: z.union([z.object({ existing: z.number().int() }), z.object({ new: z.string() })]),
+    })
   ),
 };
 
@@ -32,8 +38,24 @@ export const REQUEST_SCHEMA = {
           // workspace-relative paths this ticket will create or modify; the
           // board serialises tickets that share one
           files: { type: "array", items: { type: "string" } },
+          worker: {
+            anyOf: [
+              {
+                type: "object",
+                properties: { existing: { type: "integer" } },
+                required: ["existing"],
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                properties: { new: { type: "string" } },
+                required: ["new"],
+                additionalProperties: false,
+              },
+            ],
+          },
         },
-        required: ["title", "description", "files"],
+        required: ["title", "description", "files", "worker"],
         additionalProperties: false,
       },
     },
@@ -43,10 +65,7 @@ export const REQUEST_SCHEMA = {
 } as const;
 
 /** Put the planner's tickets on the board, start them, and say so in the chat. */
-export function addTicketsToBoard(
-  dir: string,
-  tickets: Pick<Ticket, "title" | "description" | "files">[]
-): Ticket[] {
+export function addTicketsToBoard(dir: string, tickets: store.PlannedTicket[]): Ticket[] {
   const added = store.addTickets(dir, tickets);
   if (added.length === 0) return added;
   autoRun(dir);

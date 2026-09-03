@@ -1,7 +1,14 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { type ChatEntry, defaultProject, isTicketDone, type Project, type Ticket } from "./types";
+import {
+  type ChatEntry,
+  defaultProject,
+  isTicketDone,
+  type Project,
+  type Ticket,
+  type Worker,
+} from "./types";
 
 /** New projects are created as subfolders of this directory. */
 const BASE = process.env.AUTOPROJECT_HOME || path.join(os.homedir(), "Documents", "personal");
@@ -45,11 +52,12 @@ export function readProject(dir: string): Project | null {
 interface LegacyGraph {
   tickets: (Ticket & { subgraph?: LegacyGraph })[];
 }
-type LegacyProject = Omit<Project, "notes" | "chat" | "tickets"> & {
+type LegacyProject = Omit<Project, "notes" | "chat" | "tickets" | "workers"> & {
   graph?: LegacyGraph;
   chatSessionId?: string;
   notes?: string[];
   tickets?: Ticket[];
+  workers?: Worker[];
   chat?: (ChatEntry | { role: "user" | "agent"; text: string })[];
 };
 
@@ -87,7 +95,7 @@ function migrate(raw: LegacyProject): Project {
       ? { kind: m.role === "user" ? "user" : "text", text: m.text, ts: 0, mode: "act" }
       : m
   );
-  return { ...rest, notes: rest.notes ?? [], tickets, chat };
+  return { ...rest, notes: rest.notes ?? [], tickets, workers: rest.workers ?? [], chat };
 }
 
 export function writeProject(dir: string, project: Project) {

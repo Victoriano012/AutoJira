@@ -1,5 +1,14 @@
 import { readProject, writeProject } from "../projects-fs";
-import type { AgentRequest, ChatEntry, LogEntry, Mode, Project, Ticket } from "../types";
+import type {
+  AgentRequest,
+  ChatEntry,
+  LogEntry,
+  Mode,
+  Project,
+  Ticket,
+  Worker,
+  WorkerPick,
+} from "../types";
 
 /**
  * The server process's copy of every open project. Runs live here, so this —
@@ -19,6 +28,8 @@ export type ProjectEvent =
   /** The project agent's turn began or ended, or its request stack changed. */
   | { type: "agent"; busy: boolean; mode: Mode | null; requests: AgentRequest[] }
   | { type: "notes"; notes: string[] }
+  /** The whole list: a worker was added, or one's session moved on. */
+  | { type: "workers"; workers: Worker[] }
   | { type: "runs" };
 
 interface Entry {
@@ -39,8 +50,9 @@ const WRITE_DEBOUNCE_MS = 250;
 function entry(dir: string): Entry | null {
   const found = entries.get(dir);
   // The map outlives hot reloads, so it can still hold a project loaded by the
-  // graph-era code; only a fresh read runs the on-disk migration.
-  if (found && Array.isArray(found.project.tickets)) return found;
+  // graph-era (or pre-worker) code; only a fresh read runs the on-disk migration.
+  if (found && Array.isArray(found.project.tickets) && Array.isArray(found.project.workers))
+    return found;
   if (found?.timer) clearTimeout(found.timer);
   const project = readProject(dir);
   if (!project) return null;
@@ -147,27 +159,66 @@ export function appendLog(dir: string, id: string, entryToAdd: LogEntry): void {
   publish(dir, { type: "log", id, entries: [entryToAdd] });
 }
 
-/** Put new tickets on the board (the project agent's). Returns them with
- * their ids, so the caller can name them in the chat. */
-export function addTickets(
-  dir: string,
-  tickets: Pick<Ticket, "title" | "description" | "files">[]
-): Ticket[] {
+/** What the planner hands over per ticket: the card's fields and its worker. */
+export type PlannedTicket = Pick<Ticket, "title" | "description" | "files"> & {
+  worker?: WorkerPick;
+};
+
+/** Put new tickets on the board (the project agent's), each on its worker.
+ * Returns them with their ids, so the caller can name them in the chat. */
+export function addTickets(dir: string, tickets: PlannedTicket[]): Ticket[] {
   const e = entry(dir);
   if (!e || tickets.length === 0) return [];
+  const before = e.project.workers;
+  let workers = before;
+  // The worker the planner named, or a new one — described by the ticket itself
+  // when the planner said nothing usable, so no card is ever without a worker.
+  const assign = (t: PlannedTicket): string => {
+    const pick = t.worker;
+    // Two tickets planned in one call can describe the same new worker twice.
+    const existing =
+      pick &&
+      workers.find((w) =>
+        "existing" in pick
+          ? w.n === pick.existing
+          : w.description.toLowerCase() === pick.new.trim().toLowerCase()
+      );
+    if (existing) return existing.id;
+    const w: Worker = {
+      id: crypto.randomUUID(),
+      n: workers.length + 1,
+      description: pick && "new" in pick ? pick.new : t.title,
+    };
+    workers = [...workers, w];
+    return w.id;
+  };
   const added: Ticket[] = tickets.map((t) => ({
     id: crypto.randomUUID(),
     title: t.title,
     description: t.description,
     ...(t.files ? { files: t.files } : {}),
+    workerId: assign(t),
     status: "todo",
     statusChangedAt: Date.now(),
     log: [],
   }));
-  e.project = { ...e.project, tickets: [...e.project.tickets, ...added] };
+  e.project = { ...e.project, workers, tickets: [...e.project.tickets, ...added] };
   scheduleWrite(dir, e);
+  // Workers first: a card arriving in a tab must find the worker its badge names.
+  if (workers !== before) publish(dir, { type: "workers", workers });
   publish(dir, { type: "tickets", added, removed: [] });
   return added;
+}
+
+/** A worker's conversation moved on (its agent reached init on a ticket). */
+export function setWorkerSession(dir: string, workerId: string, sessionId: string): void {
+  const e = entry(dir);
+  const w = e?.project.workers.find((x) => x.id === workerId);
+  if (!e || !w || w.sessionId === sessionId) return;
+  const workers = e.project.workers.map((x) => (x === w ? { ...x, sessionId } : x));
+  e.project = { ...e.project, workers };
+  scheduleWrite(dir, e);
+  publish(dir, { type: "workers", workers });
 }
 
 export function removeTickets(dir: string, ids: string[]): void {

@@ -50,6 +50,26 @@ export interface TicketStats {
   rejections: number;
 }
 
+/**
+ * One long-lived coding agent. The planner assigns every new ticket to a
+ * worker — one whose description covers the ticket's area, or a new one — and
+ * all of a worker's tickets run in its one conversation, so it keeps what it
+ * learnt doing the last one. Server-owned, like the run fields; never deleted.
+ */
+export interface Worker {
+  id: string;
+  /** 1-based and stable: what the cards show and the planner names. */
+  n: number;
+  /** Its area of the codebase or kind of work, briefly — not any one ticket. */
+  description: string;
+  /** Its conversation; every ticket assigned to it resumes this. */
+  sessionId?: string;
+}
+
+/** How the planner names a ticket's worker: an existing one by number, or a
+ * new one by description. */
+export type WorkerPick = { existing: number } | { new: string };
+
 export interface Ticket {
   id: string;
   title: string;
@@ -66,7 +86,11 @@ export interface Ticket {
   status: TicketStatus;
   /** Wall-clock ms when `status` last changed; columns order by it. */
   statusChangedAt?: number;
-  sessionId?: string; // Agent session, kept so review feedback resumes the same context
+  /** The worker this ticket runs on (see Worker); absent on tickets from before workers. */
+  workerId?: string;
+  /** The session its last run was in — its worker's, kept here too so a ticket
+   * from before workers still resumes its own on review feedback. */
+  sessionId?: string;
   log: LogEntry[];
   resultSummary?: string;
   /** Server-owned run totals; see TicketStats and `runFields`. */
@@ -94,6 +118,7 @@ export interface Project {
   notes: string[];
   tickets: Ticket[];
   // ---- run fields (server-owned) ----
+  workers: Worker[];
   /** The one project agent's session, resumed every turn in either mode. */
   agentSessionId?: string;
   chat: ChatEntry[];
@@ -106,6 +131,7 @@ export const defaultProject = (name: string, workspaceDir = ""): Project => ({
   attachments: [],
   notes: [],
   tickets: [],
+  workers: [],
   chat: [],
 });
 
@@ -247,11 +273,29 @@ export function fileBlockees(
   return out;
 }
 
-/** True if running the project now could make progress somewhere. Paused and
- * file-blocked tickets do not count: the scheduler will not dispatch them. */
+/** The card this ticket's own worker is still on, or null. One worker is one
+ * conversation, so two of its tickets can no more run at once than two agents
+ * can share a file — and the same rule applies: only a card in Working holds it. */
+export function workerBusyOn(tickets: Ticket[], ticketId: string): Ticket | null {
+  const me = tickets.find((t) => t.id === ticketId);
+  if (!me?.workerId) return null;
+  return (
+    tickets.find(
+      (o) => o.id !== ticketId && o.workerId === me.workerId && boardColumn(o) === "working"
+    ) ?? null
+  );
+}
+
+/** True if running the project now could make progress somewhere. Paused,
+ * file-blocked and worker-blocked tickets do not count: the scheduler will not
+ * dispatch them. */
 export function hasRunnableWork(tickets: Ticket[]): boolean {
   return tickets.some(
-    (t) => t.status === "todo" && !t.paused && !fileBlockedBy(tickets, t.id)
+    (t) =>
+      t.status === "todo" &&
+      !t.paused &&
+      !fileBlockedBy(tickets, t.id) &&
+      !workerBusyOn(tickets, t.id)
   );
 }
 
@@ -282,6 +326,8 @@ export function notReadyReason(
   // ticket is touching waits.
   const claim = fileBlockedBy(tickets, t.id);
   if (claim) return `waiting for ${claim.file}, held by “${claim.by.title}”`;
+  const busy = workerBusyOn(tickets, t.id);
+  if (busy) return `waiting for its worker, still on “${busy.title}”`;
   return t.status === "todo" ? null : `its status is ${t.status}`;
 }
 

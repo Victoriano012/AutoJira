@@ -21,6 +21,7 @@ import {
   fileClaims,
   Ticket,
   TicketStatus,
+  workerBusyOn,
 } from "@/lib/types";
 
 type ColumnId = BoardColumn;
@@ -165,6 +166,9 @@ export default function BoardView() {
   const tickets = project.tickets;
 
   const [confirmDelete, setConfirmDelete] = useState<Ticket | null>(null);
+  /** The card whose worker badge was pressed: it shows the worker's description. */
+  const [workerShown, setWorkerShown] = useState<string | null>(null);
+  const workerOf = (t: Ticket) => project.workers.find((w) => w.id === t.workerId);
 
   // ---- grow-in for cards that have just turned up ----
   // The board seeds itself with whatever it opens with, so nothing animates on
@@ -591,6 +595,8 @@ export default function BoardView() {
                     <span className="truncate">{r.file}</span>
                   </div>
                 ));
+                const worker = workerOf(t);
+                const busy = workerBusyOn(tickets, t.id);
                 return (
                 // The wrapper is what the effect above measures; the card
                 // inside it is what the FLIP animation moves.
@@ -621,9 +627,28 @@ export default function BoardView() {
                     >
                       ×
                     </button>
+                    {worker && (
+                      // Which worker runs this card; pressing it says what that
+                      // worker is for.
+                      <button
+                        className="absolute right-2 top-6 font-mono text-[10px] leading-none text-zinc-400 hover:text-zinc-900"
+                        title="Worker — press to see what it is assigned"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWorkerShown(workerShown === t.id ? null : t.id);
+                        }}
+                      >
+                        #{worker.n}
+                      </button>
+                    )}
                     <div className="line-clamp-2 break-words pr-4 text-sm font-medium text-zinc-900">
                       {t.title}
                     </div>
+                    {worker && workerShown === t.id && (
+                      <div className="mt-1 text-[11px] text-zinc-500">
+                        <span className="font-mono">#{worker.n}</span> {worker.description}
+                      </div>
+                    )}
                     {/* The pressed card shows what its agent has been doing —
                      * not the description, which is what the person wrote. */}
                     {t.id === selectedId && <LogView entries={t.log ?? []} />}
@@ -641,6 +666,14 @@ export default function BoardView() {
                               ⛔ {c.file}
                             </div>
                           ))}
+                          {busy && worker && (
+                            <div
+                              className="truncate"
+                              title={`Worker #${worker.n} is still on “${busy.title}”`}
+                            >
+                              ⛔ #{worker.n} on “{busy.title}”
+                            </div>
+                          )}
                           {heldLines}
                           {noteFlash[t.id] && (
                             <div className={noteFlash[t.id].className}>

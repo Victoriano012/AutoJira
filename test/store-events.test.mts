@@ -5,7 +5,7 @@ import test from "node:test";
 import { readProject, writeProject } from "../lib/projects-fs.ts";
 import * as store from "../lib/server/project-store.ts";
 import type { ProjectEvent } from "../lib/server/project-store.ts";
-import { defaultProject, newTicket } from "../lib/types.ts";
+import { defaultProject, newTicket, type Project } from "../lib/types.ts";
 
 /**
  * The server's project store, on a scratch project: what the live feed is
@@ -64,7 +64,9 @@ test("adding tickets publishes them, with ids, todo and stamped", () => {
       { title: "C", description: "Build C." },
     ]);
     assert.equal(added.length, 2);
-    const [e] = events;
+    // Their workers land first, so a tab can draw each card's badge at once.
+    assert.equal(events[0].type, "workers");
+    const e = events[1];
     assert.equal(e.type, "tickets");
     if (e.type !== "tickets") return;
     assert.deepEqual(e.removed, []);
@@ -88,7 +90,7 @@ test("adding tickets publishes them, with ids, todo and stamped", () => {
     assert.equal(readProject(dir)!.tickets.length, 3);
 
     store.removeTickets(dir, [added[0].id]);
-    const gone = events[1];
+    const gone = events[2];
     assert.equal(gone.type, "tickets");
     if (gone.type !== "tickets") return;
     assert.deepEqual(gone.removed, [added[0].id]);
@@ -119,4 +121,56 @@ test("the conversation publishes what was appended", () => {
     unsubscribe();
     store.forget(dir);
   }
+});
+
+test("a planned ticket reuses the worker it names, or gets a new one", () => {
+  const { dir, events, unsubscribe } = scratchProject("workers");
+  try {
+    const [b, c, d, e, f] = store.addTickets(dir, [
+      { title: "B", description: "", worker: { new: "Checkout flow" } },
+      { title: "C", description: "", worker: { existing: 1 } },
+      // A number nobody has, and nothing at all: a worker described by the ticket.
+      { title: "D", description: "", worker: { existing: 9 } },
+      { title: "E", description: "" },
+      // The same new worker described twice in one call is one worker.
+      { title: "F", description: "", worker: { new: "checkout flow" } },
+    ]);
+    const workers = store.getProject(dir)!.workers;
+    assert.deepEqual(
+      workers.map((w) => [w.n, w.description]),
+      [[1, "Checkout flow"], [2, "D"], [3, "E"]]
+    );
+    assert.equal(b.workerId, workers[0].id);
+    assert.equal(c.workerId, workers[0].id);
+    assert.equal(d.workerId, workers[1].id);
+    assert.equal(e.workerId, workers[2].id);
+    assert.equal(f.workerId, workers[0].id);
+    assert.deepEqual(events[0], { type: "workers", workers });
+
+    // Its agent reaching init moves the worker's conversation on — and the feed hears.
+    store.setWorkerSession(dir, workers[0].id, "claude:s1");
+    assert.equal(store.getProject(dir)!.workers[0].sessionId, "claude:s1");
+    assert.equal(events.at(-1)!.type, "workers");
+    // A ticket on a worker the planner did not create again keeps the list as is.
+    const n = events.length;
+    store.addTickets(dir, [{ title: "G", description: "", worker: { existing: 2 } }]);
+    assert.equal(events[n].type, "tickets");
+    assert.equal(store.getProject(dir)!.workers.length, 3);
+    // Deleting a ticket leaves its worker.
+    store.removeTickets(dir, [b.id, c.id]);
+    assert.equal(store.getProject(dir)!.workers.length, 3);
+  } finally {
+    unsubscribe();
+    store.forget(dir);
+  }
+});
+
+test("a project from before workers reads with an empty list", () => {
+  const dir = path.join(SCRATCH, "migrate");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(dir, ".autoproject"), { recursive: true });
+  const old: Partial<Project> = defaultProject("Old", dir);
+  delete old.workers;
+  fs.writeFileSync(path.join(dir, ".autoproject", "project.json"), JSON.stringify(old));
+  assert.deepEqual(readProject(dir)!.workers, []);
 });
