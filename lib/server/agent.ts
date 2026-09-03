@@ -7,6 +7,7 @@ import { AttachmentPayload, writeAttachments } from "../attachments";
 import { selectedModel } from "../config";
 import { providerForModel } from "../models";
 import { streamCodexAgent } from "./codex";
+import { streamGeminiAgent } from "./gemini";
 
 /** What one agent session cost, as the provider reported it. Nothing is
  * modelled here: a provider that gives no cost figure (the Codex CLI gives
@@ -95,8 +96,13 @@ export async function* streamAgent(req: AgentRequest): AsyncGenerator<AgentEvent
   const prompt = promptWithAttachments(cwd, req.prompt, req.attachments);
   const prepared = { ...req, workspaceDir: cwd, prompt, model };
 
-  if (providerForModel(model) === "codex") {
+  const provider = providerForModel(model);
+  if (provider === "codex") {
     yield* streamCodexAgent(prepared);
+    return;
+  }
+  if (provider === "gemini") {
+    yield* streamGeminiAgent(prepared);
     return;
   }
   yield* streamClaudeAgent(prepared);

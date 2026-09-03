@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Choose the agent model in **Settings**. Claude models run through Claude Code, and GPT-5.6 Sol, Terra, and Luna run through the local Codex CLI; AutoProject does not call either provider's model API directly.
+Choose the agent model in **Settings**. Claude models run through Claude Code, GPT-5.6 models run through Codex, and Gemini 3.7 Flash / 3.1 Pro run through the local Antigravity CLI (`agy`); AutoProject does not call any provider's model API directly.
 
 For Claude Code, the app picks up your local login automatically. On a server, set **one** of:
 
@@ -34,6 +34,10 @@ codex login
 
 AutoProject reuses that saved CLI login. If `codex` is not on the server process's `PATH`, set `AUTOPROJECT_CODEX_PATH` to the executable path.
 
+For Gemini, install the Antigravity CLI (`agy`) and authenticate:
+
+AutoProject reuses the terminal's active `agy` authentication. If `agy` is not on the server process's `PATH`, set `AUTOPROJECT_AGY_PATH` to the executable path.
+
 The **workspace dir** in the toolbar defaults to the project's folder; change it to point the agent elsewhere.
 
 AutoProject is designed to run **locally** — projects are folders on your machine and the agent edits them in place. A Vercel deployment builds and runs, but its filesystem is ephemeral, so it's only useful for demos.
@@ -44,7 +48,8 @@ AutoProject is designed to run **locally** — projects are folders on your mach
 - `lib/store.ts` — zustand store; `lib/sync.ts` autosaves to the server
 - `lib/projects-fs.ts` — projects on disk: `<workspace>/.autoproject/project.json`, imports registry in `~/.autoproject/imports.json`
 - `lib/server/runs.ts` — server-side orchestration: topological graph runs, review gating, feedback via session resume
-- `lib/server/agent.ts` — provider-neutral agent runner; dispatches to Claude Code or Codex
+- `lib/server/agent.ts` — provider-neutral agent runner; dispatches to Claude Code, Codex, or Gemini
 - `lib/server/codex.ts` — Codex CLI JSONL process adapter
+- `lib/server/gemini.ts` — Antigravity CLI (`agy`) stream-json process adapter
 - `app/api/populate/route.ts` — description → ticket graph (structured output)
 - `components/` — React Flow canvas, ticket node, detail panel, toolbar

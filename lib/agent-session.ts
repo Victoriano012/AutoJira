@@ -1,6 +1,6 @@
 import { providerForModel, type ModelProvider } from "./models";
 
-const PREFIX = /^(claude|codex):(.*)$/;
+const PREFIX = /^(claude|codex|gemini):(.*)$/;
 
 /** Sessions created before provider support were all Claude sessions. */
 export function sessionProvider(sessionId: string): ModelProvider {

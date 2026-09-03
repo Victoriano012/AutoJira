@@ -12,6 +12,7 @@ import StatsModal from "./StatsModal";
 const PROVIDERS: { value: ModelProvider; label: string }[] = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
+  { value: "gemini", label: "Gemini" },
 ];
 
 /** App-wide settings. Add future settings as more labeled rows below. */
