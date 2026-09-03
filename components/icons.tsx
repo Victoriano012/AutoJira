@@ -1,5 +1,5 @@
 /** Feather-style stroke icons for the toolbar's action buttons, sized to
- * match HomeIcon/ArrowLeftIcon/GearIcon. */
+ * match GearIcon. */
 
 function Svg({ size = 20, children }: { size?: number; children: React.ReactNode }) {
   return (
@@ -66,7 +66,7 @@ export function Spinner({
   );
 }
 
-/** Feather "arrow-right": the mirror of ArrowLeftIcon, so descending into a
+/** Feather "arrow-right": the mirror of "arrow-left", so descending into a
  * ticket's board reads as the opposite of the breadcrumb's step back. */
 export function ArrowRightIcon({ size }: { size?: number }) {
   return (
