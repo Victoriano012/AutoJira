@@ -1,83 +1,149 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mergeRunState } from "../lib/run-state.ts";
-import type { Project, Ticket, TicketGraph } from "../lib/types.ts";
+import { applyRunEdits, mergeRunState, runEdits } from "../lib/run-state.ts";
+import type { Project, Ticket } from "../lib/types.ts";
+
+/**
+ * Who owns what between the browser and the server: the server owns the ticket
+ * set and every run-produced field, the browser owns what the person typed.
+ * A snapshot merge must never let one side overwrite the other's fields.
+ */
 
 const t = (p: Partial<Ticket> & { id: string }): Ticket => ({
   title: p.id,
   description: "",
-  type: "ai",
   status: "todo",
-  position: null,
-  subgraph: { tickets: [], edges: [] },
   log: [],
   ...p,
 });
-const g = (tickets: Ticket[]): TicketGraph => ({ tickets, edges: [] });
-const p = (tickets: Ticket[]): Project => ({
+const p = (tickets: Ticket[], over: Partial<Project> = {}): Project => ({
   name: "p",
   description: "",
   workspaceDir: "/tmp/p",
-  graph: g(tickets),
-});
-const count = (graph: TicketGraph): number =>
-  graph.tickets.reduce((n, x) => n + 1 + count(x.subgraph), 0);
-
-test("a snapshot keeps a card the server has never seen", () => {
-  const mine = t({ id: "mine", title: "Browser only" });
-  const merged = mergeRunState(p([t({ id: "a" }), mine]), p([t({ id: "a" })]));
-  assert.deepEqual(
-    merged.graph.tickets.map((x) => x.id),
-    ["a", "mine"]
-  );
-});
-
-test("a snapshot keeps a board card the server has never seen", () => {
-  const board = (kids: Ticket[]) =>
-    t({ id: "board", type: "human_review", subgraph: g(kids) });
-  const merged = mergeRunState(
-    p([board([t({ id: "old" }), t({ id: "new" })])]),
-    p([board([t({ id: "old", status: "done" })])])
-  );
-  const kids = merged.graph.tickets[0].subgraph.tickets;
-  assert.deepEqual(
-    kids.map((x) => x.id),
-    ["old", "new"]
-  );
-  assert.equal(kids[0].status, "done"); // run field: the server's
-});
-
-test("a snapshot does not add cards the browser has deleted", () => {
-  const merged = mergeRunState(p([t({ id: "a" })]), p([t({ id: "a" }), t({ id: "gone" })]));
-  assert.equal(count(merged.graph), 1);
-});
-
-test("a snapshot never changes how many tickets there are", () => {
-  const browser = p([
-    t({ id: "board", type: "human_review", subgraph: g([t({ id: "c1" }), t({ id: "c2" })]) }),
-    t({ id: "loose" }),
-  ]);
-  const server = p([
-    t({ id: "board", type: "human_review", subgraph: g([t({ id: "c1", status: "review" })]) }),
-    t({ id: "stale" }),
-  ]);
-  assert.equal(count(mergeRunState(browser, server).graph), count(browser.graph));
+  notes: [],
+  tickets,
+  chat: [],
+  ...over,
 });
 
 test("the browser keeps its own fields, the server keeps the run's", () => {
   const merged = mergeRunState(
-    p([t({ id: "a", title: "renamed here", status: "todo", log: [] })]),
+    p([
+      t({
+        id: "a",
+        title: "renamed here",
+        description: "typed here",
+        files: ["src/a.ts"],
+        paused: true,
+        status: "todo",
+        log: [],
+      }),
+    ]),
     p([
       t({
         id: "a",
         title: "old name",
         status: "running",
+        statusChangedAt: 42,
+        sessionId: "s1",
+        resultSummary: "done it",
         log: [{ ts: 1, kind: "info", text: "from the run" }],
       }),
     ])
   );
-  const a = merged.graph.tickets[0];
+  const a = merged.tickets[0];
   assert.equal(a.title, "renamed here");
+  assert.equal(a.description, "typed here");
+  assert.deepEqual(a.files, ["src/a.ts"]);
+  assert.equal(a.paused, true);
   assert.equal(a.status, "running");
+  assert.equal(a.statusChangedAt, 42);
+  assert.equal(a.sessionId, "s1");
+  assert.equal(a.resultSummary, "done it");
   assert.equal(a.log.length, 1);
+});
+
+test("a ticket only the server knows survives: the project agent added it", () => {
+  const merged = mergeRunState(p([t({ id: "a" })]), p([t({ id: "a" }), t({ id: "new" })]));
+  assert.deepEqual(
+    merged.tickets.map((x) => x.id),
+    ["a", "new"]
+  );
+});
+
+test("a ticket only the browser knows is dropped: the server removed it", () => {
+  const warn = console.warn;
+  console.warn = () => {}; // the merge notes the stale tab; not the point here
+  try {
+    const merged = mergeRunState(p([t({ id: "a" }), t({ id: "gone" })]), p([t({ id: "a" })]));
+    assert.deepEqual(
+      merged.tickets.map((x) => x.id),
+      ["a"]
+    );
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("the server's order is the board's order", () => {
+  const merged = mergeRunState(
+    p([t({ id: "b" }), t({ id: "a" })]),
+    p([t({ id: "a" }), t({ id: "b" })])
+  );
+  assert.deepEqual(
+    merged.tickets.map((x) => x.id),
+    ["a", "b"]
+  );
+});
+
+test("the conversation and the agent's session come from the server", () => {
+  const merged = mergeRunState(
+    p([], { chat: [], notes: ["use pnpm"], description: "mine" }),
+    p([], {
+      chat: [{ ts: 1, kind: "user", text: "hi", mode: "panel" }],
+      agentSessionId: "agent-1",
+      notes: [],
+      description: "theirs",
+    })
+  );
+  assert.equal(merged.chat.length, 1);
+  assert.equal(merged.agentSessionId, "agent-1");
+  // Project-level user fields stay the browser's.
+  assert.deepEqual(merged.notes, ["use pnpm"]);
+  assert.equal(merged.description, "mine");
+});
+
+test("a Reopen travels as a status intent", () => {
+  const base = p([t({ id: "a", status: "done" }), t({ id: "b", status: "todo" })]);
+  const next = p([t({ id: "a", status: "todo" }), t({ id: "b", status: "todo" })]);
+  assert.deepEqual(runEdits(base, next), [{ id: "a", status: "todo" }]);
+  // A ticket the base never had is not an edit.
+  assert.deepEqual(runEdits(base, p([...next.tickets, t({ id: "c" })])), [
+    { id: "a", status: "todo" },
+  ]);
+});
+
+test("applying an intent stamps the change and skips a ticket a run owns", () => {
+  const before = Date.now();
+  const project = p([
+    t({ id: "a", status: "done", statusChangedAt: 1 }),
+    t({ id: "owned", status: "running", statusChangedAt: 1 }),
+  ]);
+  const edits = [
+    { id: "a", status: "todo" as const },
+    { id: "owned", status: "todo" as const },
+  ];
+  const next = applyRunEdits(project, edits, (id) => id === "owned");
+  const [a, owned] = next.tickets;
+  assert.equal(a.status, "todo");
+  assert.ok((a.statusChangedAt ?? 0) >= before);
+  assert.equal(owned.status, "running");
+  assert.equal(owned.statusChangedAt, 1);
+});
+
+test("an intent that changes nothing does not re-stamp the ticket", () => {
+  const project = p([t({ id: "a", status: "todo", statusChangedAt: 1 })]);
+  const next = applyRunEdits(project, [{ id: "a", status: "todo" }], () => false);
+  assert.deepEqual(next, project);
+  assert.equal(next.tickets[0].statusChangedAt, 1);
 });

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { defaultProject, isTicketDone, Project } from "./types";
+import { type ChatEntry, defaultProject, isTicketDone, type Project, type Ticket } from "./types";
 
 /** New projects are created as subfolders of this directory. */
 const BASE = process.env.AUTOPROJECT_HOME || path.join(os.homedir(), "Documents", "personal");
@@ -35,10 +35,59 @@ function writeRegistry(paths: string[]) {
 
 export function readProject(dir: string): Project | null {
   try {
-    return JSON.parse(fs.readFileSync(projectFile(dir), "utf8"));
+    return migrate(JSON.parse(fs.readFileSync(projectFile(dir), "utf8")));
   } catch {
     return null;
   }
+}
+
+/** The graph era's file shape: nested tickets under `graph`, a role/text chat. */
+interface LegacyGraph {
+  tickets: (Ticket & { subgraph?: LegacyGraph })[];
+}
+type LegacyProject = Omit<Project, "notes" | "chat" | "tickets"> & {
+  graph?: LegacyGraph;
+  chatSessionId?: string;
+  notes?: string[];
+  tickets?: Ticket[];
+  chat?: (ChatEntry | { role: "user" | "agent"; text: string })[];
+};
+
+/** Bring an older project.json up to the flat shape. Every leaf of the old
+ * graph becomes a card, keeping only a card's fields; the containers that held
+ * them were only structure. */
+function migrate(raw: LegacyProject): Project {
+  const rest = { ...raw };
+  delete rest.graph;
+  delete rest.chatSessionId;
+  const tickets: Ticket[] = rest.tickets ?? [];
+  const hoist = (g: LegacyGraph | undefined) => {
+    for (const t of g?.tickets ?? []) {
+      if (t.subgraph?.tickets.length) hoist(t.subgraph);
+      else
+        tickets.push({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          files: t.files,
+          attachments: t.attachments,
+          paused: t.paused,
+          status: t.status,
+          statusChangedAt: t.statusChangedAt,
+          sessionId: t.sessionId,
+          log: t.log,
+          resultSummary: t.resultSummary,
+          stats: t.stats,
+        });
+    }
+  };
+  hoist(raw.graph);
+  const chat: ChatEntry[] = (rest.chat ?? []).map((m) =>
+    "role" in m
+      ? { kind: m.role === "user" ? "user" : "text", text: m.text, ts: 0, mode: "act" }
+      : m
+  );
+  return { ...rest, notes: rest.notes ?? [], tickets, chat };
 }
 
 export function writeProject(dir: string, project: Project) {
@@ -54,12 +103,10 @@ function row(dir: string): ProjectRow | null {
     name: p.name,
     updated_at: fs.statSync(projectFile(dir)).mtime.toISOString(),
     metaPosition: p.metaPosition,
-    // A project is just the outermost ticket, so it is finished on exactly the
-    // same terms: every top-level ticket done, with `isTicketDone` answering
-    // for nested subgraphs and for a human gate nobody has signed off yet. A
-    // project with no tickets is not finished — `every` on an empty list would
-    // say otherwise, and "nothing to do" is not "done".
-    done: p.graph.tickets.length > 0 && p.graph.tickets.every(isTicketDone),
+    // Finished when every ticket is done. A project with no tickets is not
+    // finished — `every` on an empty list would say otherwise, and "nothing to
+    // do" is not "done".
+    done: p.tickets.length > 0 && p.tickets.every(isTicketDone),
   };
 }
 

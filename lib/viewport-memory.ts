@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Where each graph was left, for as long as the page is open.
+ * Where the meta-graph was left, for as long as the page is open.
  *
- * Drilling into a ticket unmounts the graph behind it, and a graph mounts
- * fitted — so coming back used to throw away the pan and zoom the person had
- * just arranged and drop them somewhere else. Every graph the app shows keeps
- * its own entry here (the project's root, each subgraph, the meta-graph), and
- * a returning canvas starts from it instead of re-fitting.
+ * Opening a project unmounts the graph behind it, and a graph mounts fitted —
+ * so coming back used to throw away the pan and zoom the person had just
+ * arranged and drop them somewhere else. A returning canvas starts from its
+ * entry here instead of re-fitting.
  *
  * In memory only, deliberately: a reload or a fresh tab starts fitted again.
  * Nothing here is persisted — not to localStorage, not to project.json.

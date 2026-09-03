@@ -1,19 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import ActSheet from "@/components/ActSheet";
 import BoardView from "@/components/BoardView";
-import ChatPanel from "@/components/ChatPanel";
-import TicketPanel from "@/components/TicketPanel";
+import BottomBar from "@/components/BottomBar";
 import Toolbar from "@/components/Toolbar";
+import { useBackSwipe } from "@/components/useBackSwipe";
 import { useStore } from "@/lib/store";
 import { openProject, startAutosave } from "@/lib/sync";
-import { ticketAtPath } from "@/lib/types";
 
-const GraphCanvas = dynamic(
-  () => import("@/components/GraphCanvas").then((m) => m.GraphCanvas),
-  { ssr: false }
-);
 const ProjectPicker = dynamic(() => import("@/components/ProjectPicker"), { ssr: false });
 
 const emptySubscribe = () => () => {};
@@ -28,18 +24,9 @@ export default function Home() {
   );
   const projectId = useStore((s) => s.projectId);
   const projectLoaded = useStore((s) => s.projectLoaded);
-  const depth = useStore((s) => s.path.length);
-  // A human-review ticket's subgraph opens as a kanban board, not a canvas.
-  const showBoard = useStore((s) => {
-    if (s.path.length === 0) return false;
-    const t = ticketAtPath(
-      s.project.graph,
-      s.path.slice(0, -1),
-      s.path[s.path.length - 1]
-    );
-    return t?.type === "human_review";
-  });
-  const boardKey = useStore((s) => s.path.join("/"));
+  const mode = useStore((s) => s.mode);
+  const mainRef = useRef<HTMLElement>(null);
+  useBackSwipe(mainRef);
 
   useEffect(() => {
     startAutosave();
@@ -49,6 +36,20 @@ export default function Home() {
   useEffect(() => {
     if (mounted && projectId && !projectLoaded) void openProject(projectId);
   }, [mounted, projectId, projectLoaded]);
+
+  // Ctrl+M flips between the board and the chat. Ctrl only: Cmd+M minimizes
+  // the window on macOS, and the input bar must not eat either as a letter.
+  useEffect(() => {
+    if (!projectId || !projectLoaded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        useStore.getState().toggleMode();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [projectId, projectLoaded]);
 
   if (!mounted) return <div className="h-screen bg-zinc-50" />;
 
@@ -69,35 +70,25 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-zinc-50 text-zinc-900">
       <Toolbar />
-      <div className="flex-1 flex min-h-0">
-        <main className="flex-1 relative min-w-0">
-          {/* Clip the view to the innermost depth frame so tickets don't
-              slide under the layer borders. Navigating swaps what is in here
-              instantly, hidden behind the travelling card (see
-              `lib/view-zoom.ts`) — the view itself never animates, so a canvas
-              mounts at its real size and measures its arrows correctly. */}
-          <div className="absolute overflow-hidden rounded-lg" style={{ inset: 3 + depth * 4 }}>
-            {showBoard ? <BoardView key={boardKey} /> : <GraphCanvas />}
+      <main ref={mainRef} className="flex-1 relative min-w-0">
+        {/* One frame holds the view: the board, the chat sheet that rides up
+            over it, and the input bar under both — the bar stays put whichever
+            of the two is showing. The frame clips the sheet's travel. */}
+        <div className="absolute overflow-hidden rounded-lg flex flex-col" style={{ inset: 3 }}>
+          <div className="relative flex-1 min-h-0 overflow-hidden">
+            <BoardView />
+            <ActSheet open={mode === "act"} />
           </div>
-          {/* One nested outline per level — the open project itself counts as
-              one level of the meta-graph, so root shows a single frame. The
-              frames are the chrome that says how deep you are, so they hold
-              still while the view travels; only their colour eases, so the
-              hairline that was innermost doesn't flick as it hands over. */}
-          {Array.from({ length: depth + 1 }, (_, i) => (
-            <div
-              key={i}
-              aria-hidden
-              className={`pointer-events-none absolute z-10 rounded-lg border transition-colors duration-200 ${
-                i === depth ? "border-zinc-400" : "border-zinc-300"
-              }`}
-              style={{ inset: 3 + i * 4 }}
-            />
-          ))}
-        </main>
-        <TicketPanel />
-        <ChatPanel />
-      </div>
+          <BottomBar />
+        </div>
+        {/* The outline is chrome, drawn over the view so nothing inside it can
+            paint over the hairline. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute z-30 rounded-lg border border-zinc-400"
+          style={{ inset: 3 }}
+        />
+      </main>
     </div>
   );
 }

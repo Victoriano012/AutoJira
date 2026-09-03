@@ -1,6 +1,6 @@
 "use client";
 
-import { isProjectRunning, runProject, stopProject } from "@/lib/projectRun";
+import { runProject as runProjectDir, stopProject as stopProjectDir } from "@/lib/runner";
 import {
   createProject,
   deleteProject,
@@ -34,6 +34,28 @@ import Logo from "./Logo";
 import SettingsModal from "./SettingsModal";
 import TrashIcon from "./TrashIcon";
 import { useFitAllMinZoom } from "./useFitAllZoom";
+
+// Runs started from a node, for as long as the page is open: the runner only
+// watches the open project's run state, so the picker keeps its own note of
+// whose ▶ was pressed to show it still going when the person comes back here.
+const runningIds = new Set<string>();
+
+/** ▶ on a project node: run the whole project. */
+async function runProject(id: string): Promise<void> {
+  runningIds.add(id);
+  try {
+    await runProjectDir(id);
+  } finally {
+    runningIds.delete(id);
+  }
+}
+
+const isProjectRunning = (id: string) => runningIds.has(id);
+
+function stopProject(id: string): void {
+  stopProjectDir(id);
+  runningIds.delete(id);
+}
 
 type ProjectNodeType = Node<
   { name: string; running: boolean; done: boolean; onDelete: () => void },
@@ -98,7 +120,7 @@ function ProjectNodeInner({ id, data }: NodeProps<ProjectNodeType>) {
               e.stopPropagation();
               void runProject(id);
             }}
-            title="Run the whole project graph"
+            title="Run the whole project"
             className="text-sm leading-none text-emerald-600 hover:text-emerald-500"
           >
             ▶

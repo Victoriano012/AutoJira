@@ -4,23 +4,20 @@ import { useEffect, type RefObject } from "react";
 import { useStore } from "@/lib/store";
 
 /**
- * Two-finger horizontal swipe (wheel events with dominant deltaX) navigates
- * back one layer instead of zooming/panning. Native capture-phase, non-passive
- * listener so it can preventDefault (which kills the browser's own history
- * swipe) and stop React Flow's wheel handling for the horizontal axis.
+ * Two-finger horizontal swipe (wheel events with dominant deltaX) goes back:
+ * from the chat to the board, from the board to the projects. Native
+ * capture-phase, non-passive listener so it can preventDefault (which kills
+ * the browser's own history swipe) for the horizontal axis.
  *
- * Attach it to the view's outermost element — a graph canvas or a human-review
- * board, whichever of the two is mounted. Never both at once: `app/page.tsx`
- * renders one or the other.
+ * Mounted once, at page level, on the element holding the open project's view.
  */
 
 /**
- * One gesture, one navigation — module scope, not a per-instance ref: the
- * navigation swaps the view out from under the person's still-moving fingers,
- * so the listener that saw the start of the burst unmounts and a fresh one on
- * the view that just arrived sees the rest of the same inertia tail. A lock
- * living in the hook instance would be brand new there, and that tail would
- * navigate a second time — one flick, two layers.
+ * One gesture, one navigation — module scope, not a per-instance ref: a dev
+ * refresh of this module re-creates the hook instance under the person's
+ * still-moving fingers, and a lock living in it would be brand new there, so
+ * the rest of the same inertia tail would navigate a second time — one flick,
+ * two layers.
  */
 const gesture = { acc: 0, locked: false, last: -Infinity };
 
@@ -78,16 +75,15 @@ export function useBackSwipe(ref: RefObject<HTMLElement | null>): void {
         gesture.locked = true;
         gesture.acc = 0;
         const st = useStore.getState();
-        // The same exits the toolbar's back button takes, so the fold-into-the-
-        // card animation runs for a swipe too.
-        if (st.path.length > 0) st.setPath(st.path.slice(0, -1));
+        // The same exits the toolbar takes, so the fold-into-the-node animation
+        // runs for a swipe too.
+        if (st.mode === "act") st.setMode("panel");
         else st.closeProject();
       }
     };
     // On the document, not on the view element: the view is covered mid-flight
     // and the events have to still be seen. Capture-phase and non-passive all
-    // the same, so React Flow's own wheel handling never gets the horizontal
-    // axis and the browser's history swipe stays out of it.
+    // the same, so the browser's history swipe stays out of it.
     document.addEventListener("wheel", onWheel, { capture: true, passive: false });
     return () => document.removeEventListener("wheel", onWheel, { capture: true });
   }, [ref]);

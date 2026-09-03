@@ -1,8 +1,12 @@
 "use client";
 
-import { NODE_HEIGHT, NODE_WIDTH } from "@/lib/layout";
 import { getViewportForBounds, type Node } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type RefObject } from "react";
+
+/** The box a project node is taken to occupy (the card is `w-64`, a little
+ * narrower); the fit is computed from these, never from measured sizes. */
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 120;
 
 /** React Flow's own floor, and the one a graph that already fits keeps. */
 const DEFAULT_MIN_ZOOM = 0.5;
@@ -53,10 +57,9 @@ export function useFitAllMinZoom<T extends Node>(
   //
   // Not `getNodesBounds`: outside a flow it has no `nodeLookup` to resolve
   // sub-flow parents through, and warns on every call for it — there are no
-  // nested nodes here. The sizes are the layout constants because the arrays a
-  // canvas hands to React Flow carry no measured ones (measurement lives in
-  // the flow's own store); both cards are `w-64`, narrower than NODE_WIDTH,
-  // and the fit padding covers any slack in the height.
+  // nested nodes here. The sizes are the constants above because the array the
+  // picker hands to React Flow carries no measured ones (measurement lives in
+  // the flow's own store), and the fit padding covers any slack in the height.
   const bounds = useMemo(() => {
     if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
     let minX = Infinity;

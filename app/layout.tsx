@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AutoProject",
-  description: "A graph of tickets where the AI does the work",
+  description: "A board of tickets where the AI does the work",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

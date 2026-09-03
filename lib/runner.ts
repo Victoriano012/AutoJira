@@ -1,32 +1,35 @@
 "use client";
 
 import { useStore } from "./store";
+import type { Mode } from "./types";
 
 /**
  * Runs execute in the server process, not in this tab: this module is the thin
- * client for /api/runs. Starting a run is a request the server owns from then
- * on, so reloading or closing the page leaves it running, and the run's status,
- * logs and session ids are written by the server (they arrive back through the
- * live subscription in sync.ts).
- *
- * The exported API is unchanged from when the browser drove the runs.
+ * client for /api/runs and /api/agent. Starting a run is a request the server
+ * owns from then on, so reloading or closing the page leaves it running, and
+ * the run's status, logs and session ids are written by the server (they
+ * arrive back through the live subscription in sync.ts).
  */
 
-/** What the server says is actually live, keyed exactly as it always was. */
+/** What the server says is actually live for the open project. */
 export interface RunStateSnapshot {
-  /** pathKeys whose scheduler loop is draining work. */
+  /** Non-empty while the project's scheduler loop is draining work. */
   loops: string[];
-  /** pathKeys of runs that want to continue, including parked on a human gate. */
+  /** Non-empty while the project run wants to continue. */
   active: string[];
-  /** ticketKeys with a live agent session. */
+  /** Ids of tickets with a live agent session. */
   tickets: string[];
+  /** The project agent: mid-turn or idle, and in which mode it was asked. */
+  agent: { busy: boolean; mode: Mode | null };
 }
 
-const pathKey = (path: string[]) => path.join("/") || "(root)";
-const ticketKey = (path: string[], id: string) => pathKey(path) + "#" + id;
-
-let state: RunStateSnapshot = { loops: [], active: [], tickets: [] };
-// Watchers of the run state (the toolbar). Pushed, not polled.
+let state: RunStateSnapshot = {
+  loops: [],
+  active: [],
+  tickets: [],
+  agent: { busy: false, mode: null },
+};
+// Watchers of the run state (the toolbar, the bottom bar). Pushed, not polled.
 const runListeners = new Set<() => void>();
 
 /** Subscribe to run-state changes; returns the unsubscribe. */
@@ -47,17 +50,20 @@ export function applyRunState(next: RunStateSnapshot): void {
   notifyRuns();
 }
 
-/** True while this graph's run is actually executing in the server: its
- * scheduler loop is draining work, which includes everything nested beneath it.
- * A run parked on a human gate is *not* running — the server's `active` set,
- * not this, remembers that a run wants to continue, so approving resumes it. */
-export function isGraphRunning(path: string[]): boolean {
-  return state.loops.includes(pathKey(path));
+/** True while the project's run is actually executing in the server: its
+ * scheduler loop is draining work. */
+export function isProjectRunning(): boolean {
+  return state.loops.length > 0;
 }
 
 /** True while a live agent session is open on exactly this ticket. */
-export function isTicketRunLive(path: string[], ticketId: string): boolean {
-  return state.tickets.includes(ticketKey(path, ticketId));
+export function isTicketRunLive(ticketId: string): boolean {
+  return state.tickets.includes(ticketId);
+}
+
+/** True while the project agent is mid-turn. */
+export function agentBusy(): boolean {
+  return state.agent.busy;
 }
 
 let flushProject: () => Promise<void> = async () => {};
@@ -78,12 +84,13 @@ export function setProjectFlush(fn: () => Promise<void>): void {
 /** Fires an action at the server; false means it never got there. Only worth
  * asking for when somebody is watching for the result of this one action —
  * everything else goes through `call`, since a run's own progress comes back
- * through the live subscription regardless. */
+ * through the live subscription regardless. `dir` defaults to the open project;
+ * the project picker names one. */
 async function post(
   action: string,
-  body: { path?: string[]; ticketId?: string; message?: string }
+  body: { ticketId?: string; ticketIds?: string[]; message?: string } = {},
+  dir: string | null = useStore.getState().projectId
 ): Promise<boolean> {
-  const dir = useStore.getState().projectId;
   if (!dir) return false;
   pokeStream();
   await flushProject();
@@ -107,30 +114,34 @@ async function post(
 
 async function call(
   action: string,
-  body: { path?: string[]; ticketId?: string; message?: string } = {}
+  body: { ticketId?: string; ticketIds?: string[]; message?: string } = {},
+  dir?: string
 ): Promise<void> {
-  await post(action, body);
+  await post(action, body, dir);
 }
 
-/** Run a ticket: leaf tickets go to the agent, tickets with a subgraph run the
- * subgraph. Resolves when the run settles server-side. */
-export function runTicket(path: string[], ticketId: string): Promise<void> {
-  return call("runTicket", { path, ticketId });
+/** Run one ticket's agent. Resolves when the run settles server-side. */
+export function runTicket(ticketId: string): Promise<void> {
+  return call("runTicket", { ticketId });
 }
 
-/** Run every ticket in the graph at `path`, respecting dependency edges.
- * Resolves when that scheduler loop settles server-side. */
-export function runGraph(path: string[]): Promise<void> {
-  return call("runGraph", { path });
+export function stopTicket(ticketId: string): void {
+  void call("stopTicket", { ticketId });
+}
+
+/** Run every ticket on the board, files permitting. Resolves when that
+ * scheduler loop settles server-side. */
+export function runProject(dir?: string): Promise<void> {
+  return call("runProject", {}, dir);
+}
+
+export function stopProject(dir?: string): void {
+  void call("stopProject", {}, dir);
 }
 
 /** Send human feedback into the ticket's existing agent session. */
-export function sendFeedback(
-  path: string[],
-  ticketId: string,
-  message: string
-): Promise<void> {
-  return call("sendFeedback", { path, ticketId, message });
+export function sendFeedback(ticketId: string, message: string): Promise<void> {
+  return call("sendFeedback", { ticketId, message });
 }
 
 /**
@@ -143,41 +154,60 @@ export function sendFeedback(
  * Resolves false if it never reached the server — the card says so, because an
  * indication nobody received is the person's to send again.
  */
-export function noteTicket(
-  path: string[],
-  ticketId: string,
-  message: string
-): Promise<boolean> {
-  return post("noteTicket", { path, ticketId, message });
+export function noteTicket(ticketId: string, message: string): Promise<boolean> {
+  return post("noteTicket", { ticketId, message });
 }
 
-/** Reject a ticket in review with feedback (kanban board's red cross). */
-export function rejectTicket(
-  path: string[],
-  ticketId: string,
-  message: string
-): Promise<void> {
-  return call("rejectTicket", { path, ticketId, message });
+/** Approve a ticket in review (or force-complete any ticket). */
+export function approveTicket(ticketId: string): void {
+  void call("approveTicket", { ticketId });
 }
 
-/** Approve a ticket in review (or force-complete any ticket); a graph run
- * parked on this human gate resumes. */
-export function approveTicket(path: string[], ticketId: string): void {
-  void call("approveTicket", { path, ticketId });
+/** Reject a ticket in review with feedback (the board's red cross). */
+export function rejectTicket(ticketId: string, message: string): Promise<void> {
+  return call("rejectTicket", { ticketId, message });
 }
 
-export function stopTicket(path: string[], ticketId: string): void {
-  void call("stopTicket", { path, ticketId });
-}
-
-export function stopGraph(path: string[]): void {
-  void call("stopGraph", { path });
+/** Delete tickets. The server owns the ticket set, so this goes through the
+ * runs API (which also stops any run on them) rather than the autosave. */
+export function removeTickets(ticketIds: string[]): Promise<void> {
+  return call("removeTickets", { ticketIds });
 }
 
 /** Settle tickets left marked running with no live server run behind them.
  * The server asks its registry, so a genuinely running ticket is never reset;
  * it already does this when it loads a project, which is what makes a stored
  * "running" trustworthy after a restart. */
-export function settleZombies(path: string[] = []): void {
-  void call("settleZombies", { path });
+export function settleZombies(): void {
+  void call("settleZombies");
+}
+
+/** One turn of the project agent, in `mode`. The reply streams back through
+ * the live subscription as chat entries; resolves false when the agent is
+ * already busy (409) or the request never got there. */
+export async function sendToAgent(mode: Mode, message: string): Promise<boolean> {
+  const dir = useStore.getState().projectId;
+  if (!dir) return false;
+  pokeStream();
+  await flushProject();
+  try {
+    const res = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dir, action: "send", mode, message }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export function stopAgent(): void {
+  const dir = useStore.getState().projectId;
+  if (!dir) return;
+  void fetch("/api/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dir, action: "stop" }),
+  }).catch(() => {});
 }

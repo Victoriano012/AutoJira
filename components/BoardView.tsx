@@ -1,35 +1,25 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { layoutGraph } from "@/lib/layout";
 import {
   approveTicket,
   noteTicket,
   rejectTicket,
-  runGraph,
+  removeTickets,
   runTicket,
   stopTicket,
 } from "@/lib/runner";
 import { useStore } from "@/lib/store";
-import ChatInput from "./ChatInput";
 import ConfirmDialog from "./ConfirmDialog";
+import { LogView } from "./LogView";
 import { HandIcon, NoteIcon, Spinner, StopSquare } from "./icons";
-import { useBackSwipe } from "./useBackSwipe";
 import {
   BoardColumn,
   boardColumn,
-  contextChain,
-  dependenciesOf,
-  GraphEdge,
-  graphAtPath,
+  byArrival,
   fileBlockees,
   fileClaims,
-  isTicketDone,
-  LogEntry,
-  newTicket,
-  satisfiesDependentsOnBoard,
   Ticket,
-  ticketAtPath,
   TicketStatus,
 } from "@/lib/types";
 
@@ -67,20 +57,6 @@ const COLUMNS: {
   },
 ];
 
-interface GeneratedTicket {
-  title: string;
-  description: string;
-  files: string[];
-  dependsOn: number[];
-  dependsOnExisting: number[];
-}
-
-interface PendingRequest {
-  id: string;
-  text: string;
-  error?: string;
-}
-
 /** 10 lines of text-xs (16px line-height) + py-1 (8px) + 2px border. */
 const COMPOSER_MAX_HEIGHT = 170;
 
@@ -93,90 +69,6 @@ const DEFAULT_REJECTION =
  * can see (and edit) it on the card. */
 const withIndication = (description: string, note: string) =>
   `${description.trimEnd()}\n\nExtra indication from the human: ${note}`.trim();
-
-/**
- * The card's agent conversation, shown on the card the person pressed.
- *
- * Its height is fixed, whatever the log holds: the board's cards sit in a
- * column, so a box that grew with the log would shove everything under it
- * around while the agent works. It opens on the newest entry — set before
- * paint, so the top is never seen — and keeps following the newest one, unless
- * the person has scrolled up to read, which stops the following until they
- * come back to the bottom.
- */
-function CardLog({ log }: { log: LogEntry[] }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [log.length]);
-
-  if (log.length === 0) {
-    return (
-      <div className="mt-2 text-[11px] italic text-zinc-400">
-        Nothing from the agent yet.
-      </div>
-    );
-  }
-  return (
-    <div
-      ref={ref}
-      // Reading and scrolling the log is not a press on the card: dragging its
-      // scrollbar must not collapse it.
-      onClick={(e) => e.stopPropagation()}
-      onScroll={() => {
-        const el = ref.current;
-        if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      }}
-      className="mt-2 h-32 space-y-1 overflow-y-auto overscroll-contain text-[11px] leading-snug"
-    >
-      {log.map((e, i) => {
-        switch (e.kind) {
-          case "tool":
-            return (
-              <div key={i} className="truncate font-mono text-zinc-400">
-                {e.text}
-              </div>
-            );
-          case "user":
-            return (
-              <div
-                key={i}
-                className="whitespace-pre-wrap bg-violet-50 px-1.5 py-0.5 text-zinc-700"
-              >
-                <span className="text-violet-400">&gt; </span>
-                {e.text}
-              </div>
-            );
-          case "error":
-            // A stop the person asked for is not a failure — show it like info.
-            return e.text.startsWith("Stopped by user") ? (
-              <div key={i} className="truncate font-mono italic text-zinc-400">
-                {e.text}
-              </div>
-            ) : (
-              <div key={i} className="whitespace-pre-wrap text-red-600">
-                {e.text}
-              </div>
-            );
-          case "info":
-            return (
-              <div key={i} className="truncate font-mono italic text-zinc-400">
-                {e.text}
-              </div>
-            );
-          default:
-            return (
-              <div key={i} className="whitespace-pre-wrap text-zinc-600">
-                {e.text}
-              </div>
-            );
-        }
-      })}
-    </div>
-  );
-}
 
 /** The box a card opens for a message to its agent — the review column's ✕ and
  * the note button on a card in flight both use this one. Grows with the text up
@@ -258,100 +150,38 @@ function CardComposer({
   );
 }
 
-/** Unsent request text, per board, kept outside React so a remount can't eat
- * it. sessionStorage: it belongs to this tab, and nothing here needs a server. */
-const DRAFT_KEY = "autoproject-board-draft:";
-function readDraft(pathKey: string) {
-  try {
-    return sessionStorage.getItem(DRAFT_KEY + pathKey) ?? "";
-  } catch {
-    return "";
-  }
-}
-function writeDraft(pathKey: string, value: string) {
-  try {
-    if (value) sessionStorage.setItem(DRAFT_KEY + pathKey, value);
-    else sessionStorage.removeItem(DRAFT_KEY + pathKey);
-  } catch {
-    // Private mode or a blocked store: the draft just isn't durable.
-  }
-}
-
-/** Requests that have been sent but not turned into tickets yet, per board. */
-const REQUESTS_KEY = "autoproject-board-requests:";
-function readRequests(pathKey: string): PendingRequest[] {
-  try {
-    const raw = sessionStorage.getItem(REQUESTS_KEY + pathKey);
-    const rows = raw ? (JSON.parse(raw) as PendingRequest[]) : [];
-    // The fetch that would have answered these died with the render that
-    // started it, so nothing is coming: a restored request is the person's
-    // words back in their hands — retry it or take it back into the box — and
-    // never a spinner that cannot stop.
-    return rows.map((r) => ({
-      ...r,
-      error: r.error ?? "the page reloaded before the answer came back",
-    }));
-  } catch {
-    return [];
-  }
-}
-function writeRequests(pathKey: string, rows: PendingRequest[]) {
-  try {
-    if (rows.length) {
-      sessionStorage.setItem(REQUESTS_KEY + pathKey, JSON.stringify(rows));
-    } else {
-      sessionStorage.removeItem(REQUESTS_KEY + pathKey);
-    }
-  } catch {
-    // Private mode or a blocked store: nothing to do but keep going.
-  }
-}
-
-interface DepLine {
-  id: string;
-  d: string; // svg path
-  unmet: boolean; // target still waits on this dependency
-}
-
-/** Jira-like kanban view over a human ticket's subgraph. The columns are a
- * pure function of ordinary ticket statuses, so the existing runner drives
- * every card move. */
+/** Jira-like kanban view over the project's tickets. The columns are a pure
+ * function of ordinary ticket statuses, so the runner drives every card move;
+ * the ticket set itself is the server's (the project agent adds cards, the
+ * runs API deletes them), so this view never writes it. */
 export default function BoardView() {
   const project = useStore((s) => s.project);
-  const path = useStore((s) => s.path);
-  const { updateGraph, updateTicket, removeTicket, setPath } = useStore.getState();
+  const projectId = useStore((s) => s.projectId);
+  const projectLoaded = useStore((s) => s.projectLoaded);
+  // Pressing a card opens its agent conversation; the store remembers which
+  // one across a reload.
+  const selectedId = useStore((s) => s.selectedId);
+  const { updateTicket, select, closeProject } = useStore.getState();
+  const tickets = project.tickets;
 
-  // The same swipe-back gesture the canvas has: a board is a view like any
-  // other, and it is the *only* thing rendered at its level, so this is the one
-  // listener while it is open.
-  const swipeRef = useRef<HTMLDivElement>(null);
-  useBackSwipe(swipeRef);
-
-  // Card selection is local to the board: it only opens the card's agent
-  // conversation. Routing it through the store's selection would also open the
-  // canvas's side details panel, which has no place in board view.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Ticket | null>(null);
-  const pathKey = path.join("/");
-  useEffect(() => setSelectedId(null), [pathKey]);
-
-  const graph = graphAtPath(project.graph, path);
 
   // ---- grow-in for cards that have just turned up ----
   // The board seeds itself with whatever it opens with, so nothing animates on
-  // load or when a project opens; only an id it has never drawn grows in. The
-  // id stops being new once the animation is over, because a column move
-  // remounts the card and would otherwise replay it.
+  // load or when a project opens; only an id it has never drawn grows in — the
+  // project agent's tickets landing mid-turn included. The id stops being new
+  // once the animation is over, because a column move remounts the card and
+  // would otherwise replay it.
   const seenIds = useRef(new Set<string>());
   const seededFor = useRef<string | null>(null);
   const enteringIds = useRef(new Set<string>());
-  if (graph) {
-    if (seededFor.current !== pathKey) {
-      // First render of this board (or of another one): seed, don't animate.
-      seededFor.current = pathKey;
-      seenIds.current = new Set(graph.tickets.map((t) => t.id));
+  if (projectLoaded) {
+    if (seededFor.current !== projectId) {
+      // First render of this project (or of another one): seed, don't animate.
+      seededFor.current = projectId;
+      seenIds.current = new Set(tickets.map((t) => t.id));
     } else {
-      for (const t of graph.tickets) {
+      for (const t of tickets) {
         if (seenIds.current.has(t.id)) continue;
         seenIds.current.add(t.id);
         enteringIds.current.add(t.id);
@@ -360,181 +190,11 @@ export default function BoardView() {
     }
   }
 
-  // The board's own ticket — the human-review ticket this window belongs to.
-  const parentPath = path.slice(0, -1);
-  const parent = ticketAtPath(project.graph, parentPath, path[path.length - 1]);
-
-  /** Put this panel back in play — the footer's Reopen, and what a message
-   * does on its own: saying something here means there is work left, so a
-   * panel the person had closed cannot stay closed. */
-  function reopenPanel() {
-    if (parent?.status !== "done") return; // already open: nothing to write
-    updateTicket(parentPath, parent.id, (t) => ({ ...t, status: "todo" }));
-  }
-
-  // ---- bottom-bar change requests (one agent conversation per board) ----
-  // Sent, not answered yet. Stored like the draft, and for the same reason: a
-  // remount must not swallow a request somebody is waiting on — silently
-  // dropping it is what "it was processing and then it just disappeared" is.
-  const [requests, setRequestsState] = useState<PendingRequest[]>(() =>
-    readRequests(pathKey)
-  );
-  const setRequests = (fn: (r: PendingRequest[]) => PendingRequest[]) =>
-    setRequestsState((r) => {
-      const next = fn(r);
-      writeRequests(pathKey, next);
-      return next;
-    });
-  // Per board, like the draft.
-  useEffect(() => setRequestsState(readRequests(pathKey)), [pathKey]);
-  // The draft outlives the input, per board: a remount — a reload, a dev-server
-  // restart, navigating away and back — must never eat what someone was
-  // halfway through typing. It clears only when the request is actually sent.
-  const [draft, setDraftState] = useState(() => readDraft(pathKey));
-  const setDraft = (v: string) => {
-    setDraftState(v);
-    writeDraft(pathKey, v);
-  };
-  const chainRef = useRef<Promise<void>>(Promise.resolve());
-
   // ---- Done column: follow new arrivals ----
   const doneListRef = useRef<HTMLDivElement>(null);
   const doneIds = useRef(new Set<string>());
   const doneSeeded = useRef(false);
   const doneAtBottom = useRef(true);
-
-  function submitRequest() {
-    const text = draft.trim();
-    if (!text) return;
-    reopenPanel();
-    setDraft("");
-    const id = crypto.randomUUID();
-    setRequests((r) => [...r, { id, text }]);
-    // Requests share one conversation — run them one at a time so each
-    // resumes the sessionId the previous one produced.
-    chainRef.current = chainRef.current
-      .then(() => processRequest(id, text))
-      .catch(() => {});
-  }
-
-  /** Send a failed request again, unchanged — nothing was written. */
-  function retryRequest(id: string) {
-    const r = requests.find((x) => x.id === id);
-    if (!r) return;
-    setRequests((rs) => rs.map((x) => (x.id === id ? { ...x, error: undefined } : x)));
-    chainRef.current = chainRef.current
-      .then(() => processRequest(id, r.text))
-      .catch(() => {});
-  }
-
-  /** Giving up on a failed request hands the typing back rather than losing it. */
-  function dismissRequest(r: PendingRequest) {
-    setRequests((rs) => rs.filter((x) => x.id !== r.id));
-    setDraft(draft.trim() ? `${draft.trim()} ${r.text}` : r.text);
-  }
-
-  async function processRequest(id: string, text: string) {
-    try {
-      const st = useStore.getState();
-      const g = graphAtPath(st.project.graph, path);
-      const parent = ticketAtPath(st.project.graph, path.slice(0, -1), path[path.length - 1]);
-      if (!g || !parent) return;
-      const unsolved = g.tickets.filter((t) => !isTicketDone(t));
-
-      const res = await fetch("/api/board-request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          request: text,
-          sessionId: parent.boardSessionId,
-          existing: unsolved.map((t) => ({
-            title: t.title,
-            description: t.description.slice(0, 400),
-            status: t.status,
-            files: t.files ?? [],
-          })),
-          // Always include this so a provider switch can start a fresh planner
-          // session with the same board context.
-          chain: contextChain(st.project, path).map(({ title, description }) => ({
-            title,
-            description,
-          })),
-        }),
-      });
-      const data = (await res.json()) as {
-        tickets?: GeneratedTicket[];
-        sessionId?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.tickets) {
-        throw new Error(data.error ?? `Request failed (${res.status})`);
-      }
-
-      // Board tickets are human reviews: the human's check/cross on the board
-      // is the approval step, and dependents wait for it.
-      const created = data.tickets.map((gt) =>
-        newTicket({
-          title: gt.title,
-          description: gt.description,
-          type: "human_review",
-          // Declared, never inferred: the board serialises cards that name the
-          // same file so two agents never edit it at once.
-          files: gt.files ?? [],
-        })
-      );
-      const edges: GraphEdge[] = [];
-      data.tickets.forEach((gt, i) => {
-        for (const d of gt.dependsOn) {
-          if (d >= 0 && d < i) {
-            edges.push({ id: crypto.randomUUID(), source: created[d].id, target: created[i].id });
-          }
-        }
-        for (const e of gt.dependsOnExisting) {
-          if (unsolved[e]) {
-            edges.push({ id: crypto.randomUUID(), source: unsolved[e].id, target: created[i].id });
-          }
-        }
-      });
-
-      if (data.sessionId) {
-        updateTicket(path.slice(0, -1), parent.id, (t) => ({
-          ...t,
-          boardSessionId: data.sessionId,
-        }));
-      }
-      updateGraph(path, (cur) => {
-        const known = new Set(cur.tickets.map((t) => t.id));
-        for (const t of created) known.add(t.id);
-        const merged = {
-          tickets: [...cur.tickets, ...created],
-          edges: [
-            ...cur.edges,
-            ...edges.filter((e) => known.has(e.source) && known.has(e.target)),
-          ],
-        };
-        // Positions keep the same subgraph presentable on the normal canvas.
-        const pos = layoutGraph(merged);
-        return {
-          ...merged,
-          tickets: merged.tickets.map((t) =>
-            t.position || !created.includes(t)
-              ? t
-              : { ...t, position: pos.get(t.id) ?? null }
-          ),
-        };
-      });
-      setRequests((r) => r.filter((x) => x.id !== id));
-      void runGraph(path); // spawn agents for whatever just became ready
-    } catch (err) {
-      setRequests((r) =>
-        r.map((x) =>
-          x.id === id
-            ? { ...x, error: String(err instanceof Error ? err.message : err) }
-            : x
-        )
-      );
-    }
-  }
 
   // ---- the two boxes a card can open: reject (✕ in review) and note ----
   // One at a time on the whole board, so opening either closes the other.
@@ -605,7 +265,7 @@ export default function BoardView() {
     };
     drop(
       ids.filter((id) => {
-        const t = graph?.tickets.find((x) => x.id === id);
+        const t = tickets.find((x) => x.id === id);
         return !t || t.status !== pending[id].was;
       })
     );
@@ -614,34 +274,35 @@ export default function BoardView() {
       10_000
     );
     return () => clearTimeout(timer);
-  }, [pending, graph]);
+  }, [pending, tickets]);
 
   /** Stop the agent and keep the ticket out of the queue until the person
    * starts it again. The flag is the browser's own field, so it outlives the
    * reload the server's stop does not know about. */
   const stopping = useRef(new Set<string>());
   function pause(ticketId: string) {
-    stopTicket(path, ticketId);
+    stopTicket(ticketId);
     // The agent takes a moment to wind down: until its status leaves "running"
     // the ticket is stopping, not started again.
     stopping.current.add(ticketId);
-    updateTicket(path, ticketId, (t) => ({ ...t, paused: true }));
+    updateTicket(ticketId, (t) => ({ ...t, paused: true }));
   }
 
   // A pause only means anything while the ticket waits in the queue. Once it is
-  // running again — the board's Run button, or a graph run, which deliberately
-  // lifts stops — or the agent has carried it on to review, the pause is over.
+  // running again — the board's Run button, or a project run, which
+  // deliberately lifts stops — or the agent has carried it on to review, the
+  // pause is over.
   useEffect(() => {
-    for (const t of graph?.tickets ?? []) {
+    for (const t of tickets) {
       if (t.status !== "running") stopping.current.delete(t.id);
       if (t.paused && t.status !== "todo" && !stopping.current.has(t.id))
-        updateTicket(path, t.id, (x) => ({ ...x, paused: false }));
+        updateTicket(t.id, (x) => ({ ...x, paused: false }));
     }
   });
 
   function resume(ticketId: string) {
-    updateTicket(path, ticketId, (t) => ({ ...t, paused: false }));
-    void runTicket(path, ticketId);
+    updateTicket(ticketId, (t) => ({ ...t, paused: false }));
+    void runTicket(ticketId);
   }
 
   /**
@@ -653,10 +314,9 @@ export default function BoardView() {
   function submitNote(t: Ticket) {
     const msg = (noteDrafts[t.id] ?? "").trim();
     if (!msg) return; // nothing typed: no default here, unlike a rejection
-    reopenPanel();
     closeBox();
     setNoteDrafts((d) => ({ ...d, [t.id]: "" }));
-    updateTicket(path, t.id, (x) => ({
+    updateTicket(t.id, (x) => ({
       ...x,
       description: withIndication(x.description, msg),
     }));
@@ -669,7 +329,7 @@ export default function BoardView() {
     flashNote(t.id, { text: "Sending…", className: "text-zinc-400" });
     // The flush inside this call is what carries the description above to the
     // server, so a card that starts a moment later already has the indication.
-    void noteTicket(path, t.id, msg).then((sent) => {
+    void noteTicket(t.id, msg).then((sent) => {
       if (noteSeq.current.get(t.id) !== mine) return;
       if (!sent) {
         flashNote(t.id, { text: "Not sent — send it again", className: "text-red-500" });
@@ -690,12 +350,11 @@ export default function BoardView() {
 
   function submitReject(t: Ticket) {
     const msg = (rejectDrafts[t.id] ?? "").trim() || DEFAULT_REJECTION;
-    reopenPanel();
     closeBox();
     setRejectDrafts((d) => ({ ...d, [t.id]: "" }));
     // Back to its agent: Working, or Blocked if another card holds its file.
     hold(t, "todo");
-    void rejectTicket(path, t.id, msg).catch(() =>
+    void rejectTicket(t.id, msg).catch(() =>
       // The rejection never reached the server: the card is still the person's.
       setPending((p) => {
         const next = { ...p };
@@ -708,17 +367,15 @@ export default function BoardView() {
   /** The ✓: the person has signed the card off, so it is Done from this click. */
   function submitApprove(t: Ticket) {
     hold(t, "done");
-    approveTicket(path, t.id);
+    approveTicket(t.id);
   }
 
-  // ---- FLIP column-move animation + dependency lines ----
+  // ---- FLIP column-move animation ----
   const boardRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const prevRects = useRef(new Map<string, DOMRect>());
   const skipFlipRef = useRef(false);
   const [, setMeasureTick] = useState(0);
-  const [lines, setLines] = useState<DepLine[]>([]);
-  const linesKeyRef = useRef("");
 
   useEffect(() => {
     const onResize = () => {
@@ -730,17 +387,14 @@ export default function BoardView() {
   }, []);
 
   useLayoutEffect(() => {
-    const board = boardRef.current;
-    if (!board || !graph) return;
+    if (!boardRef.current) return;
 
     // FLIP: cards keyed by ticket id — a card that changed column is a new
     // DOM node, but the delta from its previous rect still animates it
     // continuously from where it was. The measured element is the wrapper and
     // the animation runs on the card inside it, so a rect read here is always
     // the card's settled position: measuring an animating element would report
-    // where it came from, and this effect (which runs after every render, and
-    // renders again whenever the lines move) would animate the opposite delta
-    // and loop until React gave up with "Maximum update depth exceeded".
+    // where it came from and animate the opposite delta on the next render.
     const next = new Map<string, DOMRect>();
     for (const [id, el] of cardRefs.current) {
       if (el.isConnected) next.set(id, el.getBoundingClientRect());
@@ -764,85 +418,12 @@ export default function BoardView() {
     }
     skipFlipRef.current = false;
     prevRects.current = next;
-
-    // Dependency lines between cards, in board coordinates.
-    const bRect = board.getBoundingClientRect();
-    const newLines: DepLine[] = [];
-    for (const e of graph.edges) {
-      const s = next.get(e.source);
-      const t = next.get(e.target);
-      if (!s || !t) continue;
-      const src = graph.tickets.find((x) => x.id === e.source);
-      const tgt = graph.tickets.find((x) => x.id === e.target);
-      // A dependency on or from a finished card has nothing left to say: the
-      // order it enforced already happened. Drawing it only clutters the
-      // board, so the line goes even though the edge stays in the graph.
-      if ((src && isTicketDone(src)) || (tgt && isTicketDone(tgt))) continue;
-      const y1 = s.top + s.height / 2 - bRect.top;
-      const y2 = t.top + t.height / 2 - bRect.top;
-      let d: string;
-      if (s.right + 12 < t.left || t.right + 12 < s.left) {
-        const forward = s.right + 12 < t.left;
-        const x1 = (forward ? s.right : s.left) - bRect.left;
-        const x2 = (forward ? t.left : t.right) - bRect.left;
-        const off = Math.min(Math.max(Math.abs(x2 - x1) / 2, 24), 80);
-        const c1 = x1 + (x2 >= x1 ? off : -off);
-        const c2 = x2 + (x2 >= x1 ? -off : off);
-        d = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
-      } else {
-        // Same column: both anchors would sit on the same edges, so a plain
-        // curve folds flat across the cards. Keep the cross-column
-        // convention — out of the source's right edge, into the target's left
-        // edge pointing right — and route the link around the stack instead:
-        // down the gutter, back across through the free gap beside the target.
-        const x1 = s.right - bRect.left;
-        const x2 = t.left - bRect.left;
-        const xr = x1 + 13; // middle of the gutter on either side of the column
-        const xl = x2 - 13;
-        // The 8px gap next to the target, on the side the link arrives from,
-        // is the one horizontal band that never has a card in it.
-        const yc = y2 > y1 ? t.top - bRect.top - 4 : t.top + t.height - bRect.top + 4;
-        const r = Math.min(10, Math.abs(yc - y1) / 2, Math.abs(y2 - yc) / 2);
-        const s1 = Math.sign(yc - y1) * r;
-        const s2 = Math.sign(y2 - yc) * r;
-        d =
-          `M ${x1} ${y1} L ${xr - r} ${y1} Q ${xr} ${y1}, ${xr} ${y1 + s1}` +
-          ` L ${xr} ${yc - s1} Q ${xr} ${yc}, ${xr - r} ${yc}` +
-          ` L ${xl + r} ${yc} Q ${xl} ${yc}, ${xl} ${yc + s2}` +
-          ` L ${xl} ${y2 - s2} Q ${xl} ${y2}, ${xl + r} ${y2} L ${x2} ${y2}`;
-      }
-      newLines.push({
-        id: e.id,
-        d,
-        unmet: !!src && !satisfiesDependentsOnBoard(src),
-      });
-    }
-    const key = newLines.map((l) => `${l.id}${l.d}${l.unmet}`).join("|");
-    if (key !== linesKeyRef.current) {
-      linesKeyRef.current = key;
-      setLines(newLines);
-    }
   });
-
-  if (!graph) return null;
-
-  // The graph area draws one nested frame per layer (inset 3 + i*4 px, see
-  // app/page.tsx); sit essentially flush inside the innermost frame so the
-  // column stack uses the space right up to the border.
-  const frameInset = 3 + path.length * 4 + 2;
-
-  const isReady = (t: Ticket) =>
-    dependenciesOf(graph, t.id).every(satisfiesDependentsOnBoard);
-  const unmetTitles = (t: Ticket) =>
-    dependenciesOf(graph, t.id)
-      .filter((d) => !satisfiesDependentsOnBoard(d))
-      .map((d) => d.title)
-      .join(", ") || "waiting on dependencies";
 
   // File contention, straight off the helpers so the board says exactly what
   // the scheduler does: who waits on a file, and who is holding one.
-  const claimsOf = (t: Ticket) => fileClaims(graph, t.id, true);
-  const blockeesOf = (t: Ticket) => fileBlockees(graph, t.id, true);
+  const claimsOf = (t: Ticket) => fileClaims(tickets, t.id);
+  const blockeesOf = (t: Ticket) => fileBlockees(tickets, t.id);
 
   /**
    * One line per file. The helpers answer per card, so two cards holding the
@@ -868,28 +449,29 @@ export default function BoardView() {
   };
 
   const byColumn = new Map<ColumnId, Ticket[]>(COLUMNS.map((c) => [c.id, []]));
-  for (const t of graph.tickets) {
+  for (const t of tickets) {
     // A card whose ✓ or ✕ is still on its way to the server is placed as the
     // status it is about to have, so it leaves review on the click rather than
     // a round-trip later.
     const p = pending[t.id];
     const asked = p ? { ...t, status: p.becomes } : t;
-    byColumn.get(boardColumn(graph, asked, true))!.push(t);
+    byColumn.get(boardColumn(asked))!.push(t);
   }
+  // Earliest arrival in the column first, so a card that just moved lands at
+  // the bottom rather than shuffling the ones already there.
+  for (const list of byColumn.values()) list.sort(byArrival);
   // The four columns are the whole board: every card is in exactly one of them,
   // so a card that renders nowhere is a bug and not a state to discover from a
   // person telling you their tickets disappeared.
   if (process.env.NODE_ENV !== "production") {
     const placed = COLUMNS.reduce((n, c) => n + byColumn.get(c.id)!.length, 0);
-    if (placed !== graph.tickets.length)
-      console.error(
-        `BoardView: ${graph.tickets.length} cards, ${placed} placed in columns`
-      );
+    if (placed !== tickets.length)
+      console.error(`BoardView: ${tickets.length} cards, ${placed} placed in columns`);
   }
   // "All good" says nothing is left, so it is only true when the board is
   // empty of work: any card outside Done is work, and the columns already say
   // which those are.
-  const unfinished = graph.tickets.length - byColumn.get("done")!.length;
+  const unfinished = tickets.length - byColumn.get("done")!.length;
 
   const doneKey = byColumn
     .get("done")!
@@ -942,18 +524,14 @@ export default function BoardView() {
 
   return (
     // Cards stop this click, so anything else — column background, headers,
-    // the footer button, the request bar — lands here and clears the selection
-    // while still doing whatever it does itself.
-    <div
-      ref={swipeRef}
-      className="flex h-full w-full flex-col overscroll-x-none"
-      onClick={() => setSelectedId(null)}
-    >
-      {/* columns */}
+    // the footer button — lands here and clears the selection while still
+    // doing whatever it does itself.
+    <div className="h-full w-full overscroll-x-none" onClick={() => select(null)}>
+      {/* columns; p-[5px]: flush inside the page's frame, matching the bottom
+        * bar's margins under it */}
       <div
         ref={boardRef}
-        className="relative flex min-h-0 flex-1 gap-2"
-        style={{ padding: frameInset }}
+        className="flex h-full gap-2 p-[5px]"
         onScrollCapture={() => {
           skipFlipRef.current = true;
           setMeasureTick((t) => t + 1);
@@ -1020,7 +598,7 @@ export default function BoardView() {
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedId((id) => (id === t.id ? null : t.id));
+                      select(selectedId === t.id ? null : t.id);
                     }}
                     className={`relative cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:shadow ${
                       enteringIds.current.has(t.id) ? "ticket-appear " : ""
@@ -1048,7 +626,7 @@ export default function BoardView() {
                     </div>
                     {/* The pressed card shows what its agent has been doing —
                      * not the description, which is what the person wrote. */}
-                    {t.id === selectedId && <CardLog log={t.log ?? []} />}
+                    {t.id === selectedId && <LogView entries={t.log ?? []} />}
 
                     {col.id === "blocked" && (
                       // Every reason this card is not moving, stacked; the way
@@ -1057,11 +635,6 @@ export default function BoardView() {
                         <div className="min-w-0 space-y-0.5 text-zinc-400">
                           {t.paused && (
                             <div>{t.status === "running" ? "Stopping…" : "Paused"}</div>
-                          )}
-                          {!isReady(t) && (
-                            <div className="truncate" title={unmetTitles(t)}>
-                              ⛔ {unmetTitles(t)}
-                            </div>
                           )}
                           {claims.map((c) => (
                             <div key={c.file} className="truncate" title={c.hover}>
@@ -1082,16 +655,10 @@ export default function BoardView() {
                           {noteButton(t)}
                           {t.paused && (
                           <button
-                            disabled={!isReady(t) || t.status === "running"}
-                            title={
-                              t.status === "running"
-                                ? "Stopping the agent…"
-                                : isReady(t)
-                                  ? "Run"
-                                  : "Waiting on dependencies"
-                            }
+                            disabled={t.status === "running"}
+                            title={t.status === "running" ? "Stopping the agent…" : "Run"}
                             className={`shrink-0 text-sm leading-none ${
-                              isReady(t) && t.status !== "running"
+                              t.status !== "running"
                                 ? "text-emerald-600 hover:text-emerald-500"
                                 : "cursor-not-allowed text-zinc-400"
                             }`}
@@ -1137,7 +704,7 @@ export default function BoardView() {
                           ) : t.status === "error" ? (
                             <button
                               className="rounded-md bg-zinc-100 px-2 py-0.5 text-zinc-700 hover:bg-zinc-200"
-                              onClick={() => void runTicket(path, t.id)}
+                              onClick={() => void runTicket(t.id)}
                             >
                               ↻ Retry
                             </button>
@@ -1203,143 +770,37 @@ export default function BoardView() {
               })}
             </div>
 
-            {/* pinned column footer — resolve/reopen this human-review ticket */}
-            {col.id === "done" && parent && (
+            {/* pinned column footer — the project is done when every card is:
+              * nothing is left here, so the board folds back to the picker,
+              * where the project reads as done */}
+            {col.id === "done" && (
               <div className="shrink-0 px-2 pb-2">
-                {parent.status !== "done" ? (
-                  <button
-                    disabled={unfinished > 0}
-                    className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-100"
-                    title={
-                      unfinished > 0
-                        ? `${unfinished} card${unfinished > 1 ? "s" : ""} still outside Done`
-                        : "Mark this human-review ticket complete — no issues remaining"
-                    }
-                    // Not a plain status write: a run parked on this human gate
-                    // resumes only through approveTicket. Nothing is left to do
-                    // here afterwards, so the board closes behind the person —
-                    // the request is already on its way and does not depend on
-                    // this view being mounted (it captures the project and
-                    // flushes the tab's edits itself, and leaving a board
-                    // changes only which graph is on screen).
-                    onClick={() => {
-                      approveTicket(parentPath, parent.id);
-                      setPath(parentPath);
-                    }}
-                  >
-                    All good
-                  </button>
-                ) : (
-                  <button
-                    className="w-full cursor-pointer rounded-full border border-zinc-300 bg-white px-1 py-px text-lg font-bold leading-tight text-zinc-600 shadow-sm transition-colors hover:border-violet-400 hover:text-violet-600"
-                    title="Reopen this human-review ticket"
-                    onClick={reopenPanel}
-                  >
-                    Reopen
-                  </button>
-                )}
+                <button
+                  disabled={unfinished > 0}
+                  className="w-full rounded-md border border-emerald-600 bg-emerald-600 px-1 py-px text-lg font-bold leading-tight text-white hover:border-emerald-500 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-100"
+                  title={
+                    unfinished > 0
+                      ? `${unfinished} card${unfinished > 1 ? "s" : ""} still outside Done`
+                      : "Everything is done — close the project"
+                  }
+                  onClick={closeProject}
+                >
+                  All good
+                </button>
               </div>
             )}
           </div>
         ))}
-
-        {/* dependency links, drawn over the columns */}
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          <defs>
-            <marker
-              id="board-arrow"
-              viewBox="0 0 8 8"
-              refX="7"
-              refY="4"
-              markerWidth="7"
-              markerHeight="7"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 8 4 L 0 8 z" fill="#a1a1aa" />
-            </marker>
-          </defs>
-          {lines.map((l) => (
-            <path
-              key={l.id}
-              d={l.d}
-              fill="none"
-              stroke={l.unmet ? "#a1a1aa" : "#d4d4d8"}
-              strokeWidth={1.5}
-              strokeOpacity={l.unmet ? 0.7 : 0.45}
-              markerEnd="url(#board-arrow)"
-            />
-          ))}
-        </svg>
-
-      </div>
-
-      {/* processing chips */}
-      {requests.length > 0 && (
-        <div
-          className="space-y-1.5 pb-2"
-          style={{ marginLeft: frameInset, marginRight: frameInset }}
-        >
-          {requests.map((r) =>
-            r.error ? (
-              <div
-                key={r.id}
-                className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {r.text} — {r.error}
-                </span>
-                <button
-                  className="shrink-0 rounded-md bg-red-100 px-2 py-0.5 text-red-700 hover:bg-red-200"
-                  onClick={() => retryRequest(r.id)}
-                >
-                  ↻ Retry
-                </button>
-                <button
-                  title="Dismiss and put the text back in the box"
-                  className="shrink-0 text-red-400 hover:text-red-600"
-                  onClick={() => dismissRequest(r)}
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div
-                key={r.id}
-                className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-800"
-              >
-                <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
-                <span className="min-w-0 flex-1 truncate">{r.text}</span>
-                <span className="shrink-0 text-violet-500/70">
-                  breaking into tickets…
-                </span>
-              </div>
-            )
-          )}
-        </div>
-      )}
-
-      {/* bottom bar */}
-      <div
-        className="flex shrink-0 items-center gap-2"
-        style={{ margin: `0 ${frameInset}px ${frameInset}px` }}
-      >
-        <ChatInput
-          value={draft}
-          onChange={setDraft}
-          onSend={submitRequest}
-          placeholder="What should be changed? AI will turn it into tickets and get to work"
-          sendTitle="Send — AI will turn it into tickets"
-        />
       </div>
 
       {confirmDelete && (
         <ConfirmDialog
           title="Delete ticket?"
-          message={`“${confirmDelete.title}” will be removed from the graph.`}
+          message={`“${confirmDelete.title}” will be removed from the board.`}
           confirmLabel="Delete"
           danger
           onConfirm={() => {
-            removeTicket(path, confirmDelete.id);
+            void removeTickets([confirmDelete.id]);
             setConfirmDelete(null);
           }}
           onCancel={() => setConfirmDelete(null)}

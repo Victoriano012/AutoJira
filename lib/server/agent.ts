@@ -1,9 +1,14 @@
-import { query, type ModelUsage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type AgentDefinition,
+  type McpServerConfig,
+  type ModelUsage,
+} from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { resumableSession, tagSession } from "../agent-session";
-import { AttachmentPayload, writeAttachments } from "../attachments";
+import { type AttachmentPayload, writeAttachments } from "../attachments";
 import { selectedModel } from "../config";
 import { providerForModel } from "../models";
 import { streamCodexAgent } from "./codex";
@@ -20,8 +25,9 @@ export interface RunUsage {
 /** One agent turn, as the ticket runner consumes it. */
 export type AgentEvent =
   | { type: "init"; sessionId: string }
-  | { type: "text"; text: string }
-  | { type: "tool"; text: string }
+  /** `sub`: produced inside a subagent (act mode), so a transcript can indent it. */
+  | { type: "text"; text: string; sub?: boolean }
+  | { type: "tool"; text: string; sub?: boolean }
   | {
       type: "result";
       ok: boolean;
@@ -43,6 +49,16 @@ export interface AgentRequest {
   writeAccess?: boolean;
   maxTurns?: number;
   outputSchema?: Record<string, unknown>;
+  // ---- project agent only; the Codex and Gemini CLIs ignore these ----
+  /** Appended to the claude_code preset system prompt (the agent's standing role). */
+  systemPromptAppend?: string;
+  /** In-process MCP servers; every tool they expose is allowed. */
+  mcpServers?: Record<string, McpServerConfig>;
+  disallowedTools?: string[];
+  /** Subagents the Agent tool may start. */
+  agents?: Record<string, AgentDefinition>;
+  /** Forward subagent text too, not just their tool calls. */
+  forwardSubagentText?: boolean;
 }
 
 export interface AgentResult {
@@ -59,6 +75,8 @@ function describeTool(name: string, input: unknown): string {
     (i.command as string) ??
     (i.pattern as string) ??
     (i.url as string) ??
+    // The Agent tool: what the subagent was asked to do.
+    (i.description as string) ??
     "";
   return detail ? `${name}: ${String(detail).slice(0, 200)}` : name;
 }
@@ -165,13 +183,34 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
         CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
       },
+      ...(resume ? { resume: resume.raw } : {}),
+      // The workspace's CLAUDE.md only; the person's own settings and local
+      // overrides are theirs, not the project's.
+      settingSources: ["project"],
+      ...(req.systemPromptAppend
+        ? {
+            systemPrompt: {
+              type: "preset" as const,
+              preset: "claude_code" as const,
+              append: req.systemPromptAppend,
+            },
+          }
+        : {}),
       ...(req.writeAccess
         ? {
             permissionMode: "bypassPermissions" as const,
             allowDangerouslySkipPermissions: true,
           }
+        : { permissionMode: "dontAsk" as const }),
+      ...(req.disallowedTools ? { disallowedTools: req.disallowedTools } : {}),
+      ...(req.mcpServers
+        ? {
+            mcpServers: req.mcpServers,
+            allowedTools: Object.keys(req.mcpServers).map((n) => `mcp__${n}__*`),
+          }
         : {}),
-      ...(resume ? { resume: resume.raw } : {}),
+      ...(req.agents ? { agents: req.agents } : {}),
+      ...(req.forwardSubagentText ? { forwardSubagentText: true } : {}),
       ...(req.outputSchema
         ? {
             outputFormat: {
@@ -209,11 +248,16 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
           sessionId: tagSession("claude", msg.session_id),
         };
       } else if (msg.type === "assistant") {
+        const sub = msg.parent_tool_use_id !== null;
         for (const block of msg.message.content) {
           if (block.type === "text" && block.text.trim()) {
-            yield { type: "text", text: block.text };
+            yield { type: "text", text: block.text, ...(sub && { sub }) };
           } else if (block.type === "tool_use") {
-            yield { type: "tool", text: describeTool(block.name, block.input) };
+            yield {
+              type: "tool",
+              text: describeTool(block.name, block.input),
+              ...(sub && { sub }),
+            };
           }
         }
       } else if (msg.type === "result") {

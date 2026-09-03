@@ -51,8 +51,8 @@ type State = {
   rafs: number[];
   /** A commit still owed by a flight in progress (going in defers it). */
   commit: (() => void) | null;
-  /** The entry points the window-singleton store calls — see the bottom. */
-  api?: { path: typeof runPath; close: typeof runClose };
+  /** The entry point the window-singleton store calls — see the bottom. */
+  api?: { close: typeof runClose };
 };
 
 // On `window`, for the reason the store is: `next dev` re-evaluates this module
@@ -334,53 +334,7 @@ function fly(o: Flight): Promise<void> {
   return Promise.resolve();
 }
 
-const isPrefix = (a: string[], b: string[]) =>
-  a.length <= b.length && a.every((x, i) => x === b[i]);
-
-const pathKey = (p: string[]) => `t:${p.join("/")}`;
 const projectKey = (id: string) => `p:${id}`;
-
-/**
- * Animate a `setPath`, and commit it at the right moment.
- *
- * Central here rather than at the ~9 call sites because this is the one moment
- * the card being travelled through is still on screen to be measured — and it
- * covers every entry point (node, details panel, breadcrumb, back, swipe, the
- * board's "All good").
- */
-function runPath(
-  from: string[],
-  to: string[],
-  panelOpen: boolean,
-  commit: () => void
-): void {
-  let run = () => {
-    stop();
-    commit();
-  };
-  if (isPrefix(from, to) && to.length > from.length) {
-    const card = to[from.length];
-    const key = pathKey(to.slice(0, from.length + 1));
-    run = () =>
-      void fly({ key, dir: "in", cardId: card, depth: to.length, panelClosing: panelOpen, commit });
-  } else if (isPrefix(to, from) && to.length < from.length) {
-    const key = pathKey(from.slice(0, to.length + 1));
-    run = () =>
-      void fly({
-        key,
-        dir: "out",
-        cardId: from[to.length],
-        depth: from.length,
-        panelClosing: panelOpen,
-        commit,
-      });
-  }
-  run();
-  // Only cards on the way down to `to` can still be returned to.
-  for (const key of S.cards.keys()) {
-    if (key.startsWith("t:") && !isPrefix(key.slice(2).split("/"), to)) S.cards.delete(key);
-  }
-}
 
 /**
  * Opening a project from the meta-graph: the project node grows into the whole
@@ -423,12 +377,11 @@ function runClose(
 }
 
 // The store is a window singleton (see the note in `lib/store.ts`) whose
-// `setPath`/`closeProject` close over *this module's* exports. A `next dev`
-// re-evaluation replaces the module but not the store, so those closures would
+// `closeProject` closes over *this module's* exports. A `next dev`
+// re-evaluation replaces the module but not the store, so that closure would
 // go on calling the previous copy — which looks exactly like "the animation
-// stopped working, but only for tickets", the project picker having been
-// re-rendered with a fresh import. So the two entry points the store owns are
-// resolved through `window` as well, and the code that runs is the code on disk.
-S.api = { path: runPath, close: runClose };
-export const zoomPath: typeof runPath = (...a) => (S.api?.path ?? runPath)(...a);
+// stopped working", the project picker having been re-rendered with a fresh
+// import. So the entry point the store owns is resolved through `window` as
+// well, and the code that runs is the code on disk.
+S.api = { close: runClose };
 export const zoomOutOfProject: typeof runClose = (...a) => (S.api?.close ?? runClose)(...a);

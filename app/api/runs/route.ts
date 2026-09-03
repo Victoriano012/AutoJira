@@ -12,23 +12,24 @@ export interface RunRequest {
   dir: string;
   action:
     | "runTicket"
-    | "runGraph"
+    | "runProject"
     | "stopTicket"
-    | "stopGraph"
+    | "stopProject"
     | "sendFeedback"
     | "noteTicket"
     | "approveTicket"
     | "rejectTicket"
-    | "settleZombies";
-  path?: string[];
+    | "settleZombies"
+    | "removeTickets";
   ticketId?: string;
+  /** removeTickets */
+  ticketIds?: string[];
   message?: string;
 }
 
 export async function POST(req: Request) {
   const body = (await req.json()) as RunRequest;
   const { dir, action } = body;
-  const path = body.path ?? [];
   const id = body.ticketId ?? "";
   if (!dir || !runs.ensureLoaded(dir)) {
     return Response.json({ error: "Unknown project" }, { status: 404 });
@@ -37,31 +38,34 @@ export async function POST(req: Request) {
   try {
     switch (action) {
       case "runTicket":
-        await runs.runTicket(dir, path, id);
+        await runs.runTicket(dir, id);
         break;
-      case "runGraph":
-        await runs.runGraph(dir, path);
+      case "runProject":
+        await runs.runProject(dir);
         break;
       case "sendFeedback":
-        await runs.sendFeedback(dir, path, id, body.message ?? "");
+        await runs.sendFeedback(dir, id, body.message ?? "");
         break;
       case "noteTicket":
-        runs.noteTicket(dir, path, id, body.message ?? "");
+        runs.noteTicket(dir, id, body.message ?? "");
         break;
       case "rejectTicket":
-        await runs.rejectTicket(dir, path, id, body.message ?? "");
+        await runs.rejectTicket(dir, id, body.message ?? "");
         break;
       case "approveTicket":
-        runs.approveTicket(dir, path, id);
+        runs.approveTicket(dir, id);
         break;
       case "stopTicket":
-        runs.stopTicket(dir, path, id);
+        runs.stopTicket(dir, id);
         break;
-      case "stopGraph":
-        runs.stopGraph(dir, path, true);
+      case "stopProject":
+        runs.stopProject(dir, true);
         break;
       case "settleZombies":
-        runs.settleZombies(dir, path);
+        runs.settleZombies(dir);
+        break;
+      case "removeTickets":
+        runs.removeTickets(dir, body.ticketIds ?? []);
         break;
       default:
         return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });

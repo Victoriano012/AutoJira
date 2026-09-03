@@ -8,7 +8,7 @@ import {
 } from "./runner";
 import { useStore } from "./store";
 import { mergeRunState, runEdits } from "./run-state";
-import { LogEntry, Project, Ticket } from "./types";
+import { ChatEntry, LogEntry, Mode, Project, Ticket } from "./types";
 
 async function createOrImport(body: { name?: string; path?: string }) {
   const res = await fetch("/api/projects", {
@@ -74,14 +74,30 @@ export async function deleteProject(
 
 // ---- live run feed -------------------------------------------------------
 
+/** The server's `ProjectEvent`s (lib/server/project-store.ts) with `runs`
+ * expanded into its snapshot, plus the connection's own two. */
 type StreamEvent =
   | { type: "snapshot"; project: Project; runs: RunStateSnapshot }
   | { type: "runs"; runs: RunStateSnapshot }
-  | { type: "ticket"; path: string[]; id: string; patch: Partial<Ticket> }
-  | { type: "log"; path: string[]; id: string; entries: LogEntry[] }
+  | { type: "ticket"; id: string; patch: Partial<Ticket> }
+  | { type: "log"; id: string; entries: LogEntry[] }
+  | { type: "tickets"; added: Ticket[]; removed: string[] }
+  | { type: "chat"; entries: ChatEntry[] }
+  | { type: "agent"; busy: boolean; mode: Mode | null; sessionId?: string }
+  | { type: "notes"; notes: string[] }
   | { type: "ping" };
 
+const NO_RUNS: RunStateSnapshot = {
+  loops: [],
+  active: [],
+  tickets: [],
+  agent: { busy: false, mode: null },
+};
+
 let source: EventSource | null = null;
+/** The last run snapshot applied, so an `agent` event — which carries only its
+ * own part — can be folded into the rest. */
+let lastRuns: RunStateSnapshot = NO_RUNS;
 /** Timers keeping the feed alive — see `openStream`. */
 let reopenTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdog: ReturnType<typeof setInterval> | null = null;
@@ -112,7 +128,12 @@ function closeStream(): void {
   watchdog = null;
   source?.close();
   source = null;
-  applyRunState({ loops: [], active: [], tickets: [] });
+  setRuns(NO_RUNS);
+}
+
+function setRuns(runs: RunStateSnapshot): void {
+  lastRuns = runs;
+  applyRunState(runs);
 }
 
 /** Subscribe to the server's run feed for `dir`: run state, status changes and
@@ -178,17 +199,26 @@ function openStream(dir: string): void {
       applyRemote(() =>
         useStore.getState().setProject(mergeRunState(store.project, msg.project))
       );
-      applyRunState(msg.runs);
+      setRuns(msg.runs);
     } else if (msg.type === "runs") {
-      applyRunState(msg.runs);
+      setRuns(msg.runs);
+    } else if (msg.type === "agent") {
+      setRuns({ ...lastRuns, agent: { busy: msg.busy, mode: msg.mode } });
     } else if (msg.type === "ticket") {
-      applyRemote(() =>
-        store.updateTicket(msg.path, msg.id, (t) => ({ ...t, ...msg.patch }))
-      );
+      applyRemote(() => store.updateTicket(msg.id, (t) => ({ ...t, ...msg.patch })));
     } else if (msg.type === "log") {
       applyRemote(() => {
-        for (const entry of msg.entries) store.appendLog(msg.path, msg.id, entry);
+        for (const entry of msg.entries) store.appendLog(msg.id, entry);
       });
+    } else if (msg.type === "tickets") {
+      applyRemote(() => {
+        if (msg.removed.length) store.removeTickets(msg.removed);
+        if (msg.added.length) store.addTickets(msg.added);
+      });
+    } else if (msg.type === "chat") {
+      applyRemote(() => store.appendChat(msg.entries));
+    } else if (msg.type === "notes") {
+      applyRemote(() => store.setNotes(msg.notes));
     }
   };
 }

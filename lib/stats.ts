@@ -1,9 +1,7 @@
-import type { Ticket, TicketGraph, TicketStats, TicketStatus } from "./types";
+import type { Ticket, TicketStats, TicketStatus } from "./types";
 
 /**
- * Project statistics, summed over a level and everything nested beneath it —
- * a project is just the outermost ticket, so at the root this is the whole
- * project.
+ * Project statistics, summed over the board.
  *
  * Every total here is measured, never modelled: time is wall-clock around the
  * agent session, tokens and cost are what the provider reported, rejections are
@@ -13,13 +11,7 @@ import type { Ticket, TicketGraph, TicketStats, TicketStatus } from "./types";
  * claiming a measurement nobody took.
  */
 export interface ProjectStats {
-  /** Tickets at this level and below, including the ones with subgraphs. */
   tickets: number;
-  /** Not a review: plain agent work, plus the "subgraph" containers that label
-   * decomposed agent work. */
-  ai: number;
-  /** human_review tickets — the interaction tickets, counted separately. */
-  interaction: number;
   byStatus: Record<TicketStatus, number>;
   /** Tickets carrying recorded stats; 0 means nothing below was measured. */
   measured: number;
@@ -31,12 +23,11 @@ export interface ProjectStats {
    * covers `runs - runsWithoutCost` of them. */
   runsWithoutCost: number;
   rejections: number;
-  /** Interaction tickets a person has actually filed — approved, or sent back
-   * at least once. The denominator below. */
+  /** Tickets a person has actually reviewed — approved, or sent back at least
+   * once. The denominator below. */
   reviewed: number;
-  /** null when no interaction ticket has been reviewed yet, rather than a
-   * division by zero. */
-  rejectionsPerInteraction: number | null;
+  /** null when no ticket has been reviewed yet, rather than a division by zero. */
+  rejectionsPerReview: number | null;
 }
 
 const zeroStatus = (): Record<TicketStatus, number> => ({
@@ -72,17 +63,15 @@ export function addStats(
   };
 }
 
-/** An interaction ticket the person has passed judgement on: they signed it off
- * or sent it back. One still sitting in review has not been reviewed yet. */
+/** A ticket the person has passed judgement on: they signed it off or sent it
+ * back. One still sitting in review has not been reviewed yet. */
 function isReviewed(t: Ticket): boolean {
   return t.status === "done" || (t.stats?.rejections ?? 0) > 0;
 }
 
-export function collectStats(g: TicketGraph): ProjectStats {
+export function collectStats(tickets: Ticket[]): ProjectStats {
   const out: ProjectStats = {
     tickets: 0,
-    ai: 0,
-    interaction: 0,
     byStatus: zeroStatus(),
     measured: 0,
     runs: 0,
@@ -92,35 +81,26 @@ export function collectStats(g: TicketGraph): ProjectStats {
     runsWithoutCost: 0,
     rejections: 0,
     reviewed: 0,
-    rejectionsPerInteraction: null,
+    rejectionsPerReview: null,
   };
 
-  const walk = (graph: TicketGraph) => {
-    for (const t of graph.tickets) {
-      out.tickets++;
-      if (t.type === "human_review") {
-        out.interaction++;
-        if (isReviewed(t)) out.reviewed++;
-      } else {
-        out.ai++;
-      }
-      out.byStatus[t.status]++;
-      const s = t.stats;
-      if (s) {
-        out.measured++;
-        out.runs += s.runs;
-        out.ms += s.ms;
-        out.tokens += s.tokens;
-        out.costUsd += s.costUsd;
-        out.runsWithoutCost += s.runsWithoutCost;
-        out.rejections += s.rejections;
-      }
-      walk(t.subgraph);
+  for (const t of tickets) {
+    out.tickets++;
+    if (isReviewed(t)) out.reviewed++;
+    out.byStatus[t.status]++;
+    const s = t.stats;
+    if (s) {
+      out.measured++;
+      out.runs += s.runs;
+      out.ms += s.ms;
+      out.tokens += s.tokens;
+      out.costUsd += s.costUsd;
+      out.runsWithoutCost += s.runsWithoutCost;
+      out.rejections += s.rejections;
     }
-  };
-  walk(g);
+  }
 
-  if (out.reviewed > 0) out.rejectionsPerInteraction = out.rejections / out.reviewed;
+  if (out.reviewed > 0) out.rejectionsPerReview = out.rejections / out.reviewed;
   return out;
 }
 

@@ -144,3 +144,24 @@ export function StopIcon({ size }: { size?: number }) {
     </Svg>
   );
 }
+
+/** Feather "trello"-style board: three columns — the mode button's way of
+ * saying "back to the board" while the chat is up. */
+export function BoardIcon({ size }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+      <line x1="15" y1="3" x2="15" y2="21" />
+    </Svg>
+  );
+}
+
+/** Feather "message-circle": the chat, offered while the board is showing. */
+export function ChatIcon({ size }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </Svg>
+  );
+}

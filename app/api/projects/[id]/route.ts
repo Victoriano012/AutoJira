@@ -1,6 +1,6 @@
 import { eraseProject, hideProject } from "@/lib/projects-fs";
 import { forget, getProject, setProject } from "@/lib/server/project-store";
-import { autoRunBoards, ensureLoaded, ownsTicket } from "@/lib/server/runs";
+import { autoRun, ensureLoaded, ownsTicket } from "@/lib/server/runs";
 import { applyRunEdits, mergeRunState, RunEdit } from "@/lib/run-state";
 import { Project } from "@/lib/types";
 
@@ -18,10 +18,10 @@ export async function GET(_req: Request, ctx: Ctx) {
 }
 
 /**
- * The browser's autosave. It owns structure and user fields; the server owns
- * every run-produced field (status, log, sessionId, resultSummary), so those
- * are taken from the server's copy rather than the payload. Deliberate changes
- * to a run field (Reopen, a chat session) arrive as `edits` and are applied
+ * The browser's autosave. It owns the user fields; the server owns the ticket
+ * set and every run-produced field (status, log, sessionId, resultSummary),
+ * so those are taken from the server's copy rather than the payload. A
+ * deliberate change to a run field (Reopen) arrives as `edits` and is applied
  * unless a live run owns that ticket.
  */
 export async function PUT(req: Request, ctx: Ctx) {
@@ -33,15 +33,13 @@ export async function PUT(req: Request, ctx: Ctx) {
   // parse would otherwise be merged away by a snapshot taken too early.
   const current = getProject(dir);
   if (!current) return Response.json({ error: "Not found" }, { status: 404 });
-  const merged = applyRunEdits(
-    mergeRunState(data, current),
-    edits ?? [],
-    (path, ticketId) => ownsTicket(dir, path, ticketId)
+  const merged = applyRunEdits(mergeRunState(data, current), edits ?? [], (id) =>
+    ownsTicket(dir, id)
   );
   setProject(dir, merged);
-  // The autosave is how new cards reach the server. A card that can run should
-  // be running, not queued behind the next time somebody presses run.
-  autoRunBoards(dir);
+  // An unpause or a Reopen can make a card runnable. It should be running, not
+  // queued behind the next time somebody presses run.
+  autoRun(dir);
   return Response.json({ ok: true });
 }
 

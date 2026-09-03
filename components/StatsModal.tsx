@@ -8,7 +8,7 @@ import {
   formatTokens,
 } from "@/lib/stats";
 import { useStore } from "@/lib/store";
-import { contextChain, graphAtPath, type TicketStatus } from "@/lib/types";
+import type { TicketStatus } from "@/lib/types";
 
 const STATUSES: { key: TicketStatus; label: string; bar: string }[] = [
   { key: "done", label: "Done", bar: "bg-emerald-400" },
@@ -50,8 +50,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /**
- * What this level of the project cost: the graph the person is looking at and
- * everything nested beneath it — at the root, the whole project.
+ * What the project cost, over every ticket on its board.
  *
  * Every number is measured, never modelled. Time is wall-clock around each
  * agent session; tokens and cost are what the provider reported (the Codex CLI
@@ -61,7 +60,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 export default function StatsModal({ onClose }: { onClose: () => void }) {
   const project = useStore((s) => s.project);
-  const path = useStore((s) => s.path);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -69,13 +67,10 @@ export default function StatsModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const graph = graphAtPath(project.graph, path);
-  const stats = collectStats(graph ?? { tickets: [], edges: [] });
-  const chain = contextChain(project, path);
-  const level = chain[chain.length - 1]?.title ?? project.name;
+  const stats = collectStats(project.tickets);
 
-  // Nothing below this level has recorded totals: an older project, or work
-  // that has not run yet. Saying "0" would claim a measurement nobody took.
+  // Nothing here has recorded totals: an older project, or work that has not
+  // run yet. Saying "0" would claim a measurement nobody took.
   const measured = stats.measured > 0;
   const costed = stats.runs - stats.runsWithoutCost;
   const notRecorded = "not recorded";
@@ -90,19 +85,11 @@ export default function StatsModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold">Stats</h2>
-        <p className="mt-0.5 text-xs text-zinc-500">
-          {path.length === 0 ? (
-            <>Whole project — “{level}”</>
-          ) : (
-            <>“{level}” and everything inside it</>
-          )}
-        </p>
+        <p className="mt-0.5 text-xs text-zinc-500">“{project.name}”</p>
 
         <div className="mt-5 space-y-5">
           <Section title="Tickets">
             <Row label="Total" value={String(stats.tickets)} />
-            <Row label="AI tickets" value={String(stats.ai)} />
-            <Row label="Interaction tickets" value={String(stats.interaction)} />
           </Section>
 
           {stats.tickets > 0 && (
@@ -171,16 +158,13 @@ export default function StatsModal({ onClose }: { onClose: () => void }) {
               label="Rejections"
               value={measured ? String(stats.rejections) : notRecorded}
             />
-            <Row
-              label="Interaction tickets reviewed"
-              value={`${stats.reviewed} of ${stats.interaction}`}
-            />
+            <Row label="Tickets reviewed" value={`${stats.reviewed} of ${stats.tickets}`} />
             <Row
               label="Rejections per reviewed ticket"
               value={
-                stats.rejectionsPerInteraction === null
+                stats.rejectionsPerReview === null
                   ? "—"
-                  : stats.rejectionsPerInteraction.toFixed(2)
+                  : stats.rejectionsPerReview.toFixed(2)
               }
             />
           </Section>

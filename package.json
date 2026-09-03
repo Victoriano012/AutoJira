@@ -11,14 +11,13 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.251",
-    "@types/dagre": "^0.7.54",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "@xyflow/react": "^12.11.5",
-    "dagre": "^0.8.5",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "zod": "^4.5.4",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
