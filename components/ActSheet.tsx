@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { agentBusy, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 
@@ -9,56 +9,61 @@ import { useStore } from "@/lib/store";
  * switches to act mode and back down when they leave it.
  *
  * Mounted only while it is on screen or on its way off: `open` flipping true
- * mounts it below the fold and, a frame later, sends it up; flipping false
- * sends it down and unmounts it once the transform has finished travelling
- * (see `.act-sheet` in globals.css). Clicks pass through it until it has fully
- * arrived, so a press meant for the board mid-flight does not land on the chat.
- * The transition's end is what moves it on, with a timer behind it for the
- * reduced-motion case where there is no transition to end.
+ * mounts it below the fold and sends it up; flipping false sends it down and
+ * unmounts it once the transform has finished travelling (see `.act-sheet` in
+ * globals.css). Clicks pass through it until it has fully arrived, so a press
+ * meant for the board mid-flight does not land on the chat. The transition's
+ * end is what moves it on, with a timer behind it for the reduced-motion case
+ * where there is no transition to end.
  */
-/** Where the sheet is on its way: mounted below the fold, travelling up, in
- * place, or travelling down (then unmounted). */
-type Phase = "closed" | "entering" | "sliding" | "open" | "leaving";
+/** Where the sheet is on its way: travelling up, in place, or travelling down
+ * (then unmounted). */
+type Phase = "closed" | "entering" | "open" | "leaving";
 
 export default function ActSheet({ open }: { open: boolean }) {
   const [phase, setPhase] = useState<Phase>(open ? "open" : "closed");
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Answered on render, not in an effect, so the sheet moves the same frame
+  // `open` changes. A flip mid-flight just changes the destination: the
+  // transition reverses from wherever the sheet is.
+  if (open && (phase === "closed" || phase === "leaving")) setPhase("entering");
+  if (!open && (phase === "open" || phase === "entering")) setPhase("leaving");
 
   useEffect(() => {
-    // A frame later, not now: the sheet has to paint once at its start position
-    // for the change to be something the transition travels.
-    let raf = requestAnimationFrame(() => {
-      if (open) {
-        setPhase((p) => (p === "open" ? p : "entering"));
-        raf = requestAnimationFrame(() => setPhase((p) => (p === "entering" ? "sliding" : p)));
-      } else {
-        setPhase((p) => (p === "closed" ? p : "leaving"));
-      }
-    });
     // Reduced motion has no transition to end, so the arrival is timed too.
     const timer = setTimeout(
       () =>
         setPhase((p) =>
-          open ? (p === "sliding" ? "open" : p) : p === "leaving" ? "closed" : p
+          open ? (p === "entering" ? "open" : p) : p === "leaving" ? "closed" : p
         ),
       650
     );
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [open]);
 
+  // The sheet's position is set on the DOM here rather than rendered: on the
+  // way in it has to be resolved once at the bottom before it is told to go
+  // up, or the browser sees only the end state and it appears in place with
+  // nothing to travel. Reading layout forces that first resolution; a frame
+  // gap (rAF) did not, since React can fold both states into one paint.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (phase === "entering") void el.getBoundingClientRect();
+    el.dataset.open = String(phase === "entering" || phase === "open");
+  }, [phase]);
+
   if (phase === "closed") return null;
-  const shown = phase === "sliding" || phase === "open";
   return (
     <div
-      data-open={shown}
+      ref={ref}
       className={`act-sheet absolute inset-0 z-20 bg-white flex flex-col${
         phase === "open" ? "" : " pointer-events-none"
       }`}
       onTransitionEnd={(e) => {
         if (e.target !== e.currentTarget || e.propertyName !== "transform") return;
-        setPhase(open ? "open" : "closed");
+        setPhase((p) => (p === "entering" ? "open" : p === "leaving" ? "closed" : p));
       }}
     >
       <Transcript />
