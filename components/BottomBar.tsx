@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { agentBusy, sendToAgent, stopAgent, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
 import ChatInput from "./ChatInput";
@@ -47,9 +47,39 @@ export default function BottomBar() {
   // chat it reaches the agent mid-turn, so the transcript shows it at once.
   const stoppable = busy && mode === "act";
 
+  // Arrow-up recall, per mode: what was sent to the board is not what one
+  // would resend to the chat. Newest last; repeats collapsed to their latest.
+  const chat = useStore((s) => s.project.chat);
+  const history = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (let i = chat.length - 1; i >= 0; i--) {
+      const m = chat[i];
+      if (m.kind !== "user" || m.mode !== mode || seen.has(m.text)) continue;
+      seen.add(m.text);
+      out.unshift(m.text);
+    }
+    return out;
+  }, [chat, mode]);
+  // Where in the history the box is showing (history.length = the draft
+  // itself), and the typing that was there before recalling, to come back to.
+  const recall = useRef<{ at: number; stash: string } | null>(null);
+  function walkHistory(dir: "back" | "forward") {
+    const cur = recall.current ?? { at: history.length, stash: draft };
+    const at = Math.max(0, Math.min(history.length, cur.at + (dir === "back" ? -1 : 1)));
+    if (at === cur.at) return;
+    recall.current = at === history.length ? null : { ...cur, at };
+    setDraft(at === history.length ? cur.stash : history[at]);
+  }
+  const edit = (v: string) => {
+    recall.current = null; // typing makes it the person's own text again
+    setDraft(v);
+  };
+
   async function send() {
     const text = draft.trim();
     if (!text) return;
+    recall.current = null;
     setDraft("");
     // Never reached the server: the words are still the person's to send again.
     if (!(await sendToAgent(mode, text))) setDraft(text);
@@ -66,8 +96,9 @@ export default function BottomBar() {
       <div className="flex items-center gap-2">
         <ChatInput
           value={draft}
-          onChange={setDraft}
+          onChange={edit}
           onSend={send}
+          onHistory={walkHistory}
           placeholder={
             mode === "act"
               ? "What should be done?"
