@@ -64,6 +64,8 @@ export interface AgentRequest {
   agents?: Record<string, AgentDefinition>;
   /** Forward subagent text too, not just their tool calls. */
   forwardSubagentText?: boolean;
+  /** Keep the CLI from backgrounding shells and subagents (see the env below). */
+  disableBackgroundTasks?: boolean;
 }
 
 export interface AgentResult {
@@ -219,6 +221,14 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
         ...(process.env as Record<string, string>),
         CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
+        // A background shell or agent dies with this process at the end of
+        // the turn, and the CLI resuming the session next turn finds the
+        // orphan, marks it stopped and, in the same breath, aborts every MCP
+        // call in that process: each board tool call then comes back as "The
+        // tool call was interrupted before a result was received", whether or
+        // not the handler ran. So the project agent, whose session is resumed
+        // turn after turn, is not allowed to background anything.
+        ...(req.disableBackgroundTasks ? { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } : {}),
       },
       ...(resume ? { resume: resume.raw } : {}),
       // The workspace's CLAUDE.md only; the person's own settings and local

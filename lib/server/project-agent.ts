@@ -247,6 +247,9 @@ async function turn(
           mode === "panel" ? ["Edit", "Write", "MultiEdit", "NotebookEdit", "Task"] : undefined,
         forwardSubagentText: mode === "act",
         agents: mode === "act" ? ACT_AGENTS : undefined,
+        // An act turn that backgrounds a command leaves an orphan that breaks
+        // the board tools on the next panel turn (see agent.ts).
+        disableBackgroundTasks: true,
         outputSchema: fallback ? REQUEST_SCHEMA : undefined,
       });
       for await (const ev of events) {
