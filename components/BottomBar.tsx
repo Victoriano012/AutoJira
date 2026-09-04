@@ -42,14 +42,14 @@ export default function BottomBar() {
     writeDraft(projectId, v);
   };
 
-  // On the board a message queues behind the one being worked on — the stack
-  // above the bar shows where it stands — so the bar never closes there. Over
-  // the chat there is no stack, so it waits for the turn instead.
-  const closed = busy && mode === "act";
+  // The bar never closes: on the board a message queues behind the one being
+  // worked on — the stack above the bar shows where it stands — and over the
+  // chat it reaches the agent mid-turn, so the transcript shows it at once.
+  const stoppable = busy && mode === "act";
 
   async function send() {
     const text = draft.trim();
-    if (!text || closed) return;
+    if (!text) return;
     setDraft("");
     // Never reached the server: the words are still the person's to send again.
     if (!(await sendToAgent(mode, text))) setDraft(text);
@@ -68,7 +68,6 @@ export default function BottomBar() {
           value={draft}
           onChange={setDraft}
           onSend={send}
-          disabled={closed}
           placeholder={
             mode === "act"
               ? "What should be done?"
@@ -77,7 +76,7 @@ export default function BottomBar() {
           sendTitle={mode === "act" ? "Send" : "Send — AI will turn it into tickets"}
         />
         {/* Stopping a board request is its row's ✕; the bar's square is the chat's. */}
-        {closed && <StopSquare onClick={stopAgent} title="Stop the agent" />}
+        {stoppable && <StopSquare onClick={stopAgent} title="Stop the agent" />}
       </div>
     </div>
   );

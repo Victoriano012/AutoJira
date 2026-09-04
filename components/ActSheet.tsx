@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { agentBusy, subscribeRuns } from "@/lib/runner";
+import { agentBusy, agentRequests, subscribeRuns } from "@/lib/runner";
 import { useStore } from "@/lib/store";
+import type { AgentRequest } from "@/lib/types";
 
 /**
  * The project agent's conversation, slid up over the board when the person
@@ -71,14 +72,21 @@ export default function ActSheet({ open }: { open: boolean }) {
   );
 }
 
+const NONE: AgentRequest[] = [];
+
 function Transcript() {
   const chat = useStore((s) => s.project.chat);
   const busy = useSyncExternalStore(subscribeRuns, agentBusy, () => false);
+  // A chat message the running turn could not take (another mode's turn, or a
+  // CLI with no way in mid-turn) waits in the queue; it shows here, dimmed,
+  // until its turn starts and writes it to the transcript for real.
+  const requests = useSyncExternalStore(subscribeRuns, agentRequests, () => NONE);
+  const waiting = requests.filter((r) => r.mode === "act" && r.state === "queued");
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [chat.length, busy]);
+  }, [chat.length, waiting.length, busy]);
 
   return (
     <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
@@ -125,6 +133,16 @@ function Transcript() {
             );
         }
       })}
+      {waiting.map((r) => (
+        <p
+          key={r.id}
+          title="Waiting for the agent's current turn to end"
+          className="rounded bg-sky-100 px-2 py-1 font-mono text-sm text-zinc-700 whitespace-pre-wrap opacity-50"
+        >
+          <span className="text-zinc-400">&gt; </span>
+          {r.text}
+        </p>
+      ))}
       {busy && (
         <p className="font-mono text-sm text-zinc-500 animate-pulse whitespace-pre-wrap">
           Working…

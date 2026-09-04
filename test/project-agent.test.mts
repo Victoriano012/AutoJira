@@ -121,8 +121,8 @@ test("messages queue behind a running turn, in order, and cancelling drops one",
   // A turn in progress: nothing sent now may start, and the agent SDK is never reached.
   registry.agents.set(dir, new AbortController());
   try {
-    const a = sendToAgent(dir, "panel", "Add a cart");
-    const b = sendToAgent(dir, "panel", "Add checkout");
+    const a = sendToAgent(dir, "panel", "Add a cart")!;
+    const b = sendToAgent(dir, "panel", "Add checkout")!;
     assert.deepEqual(
       runState(dir).agent.requests.map((r) => [r.text, r.state]),
       [["Add a cart", "queued"], ["Add checkout", "queued"]]
@@ -139,6 +139,56 @@ test("messages queue behind a running turn, in order, and cancelling drops one",
   } finally {
     unsubscribe();
     registry.agents.delete(dir);
+    registry.requests.delete(dir);
+    store.forget(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a chat message reaches a running chat turn at once; otherwise it waits like the rest", async () => {
+  const fs = await import("node:fs");
+  const { writeProject } = await import("../lib/projects-fs.ts");
+  const store = await import("../lib/server/project-store.ts");
+  const { registry, runState } = await import("../lib/server/runs.ts");
+  const { sendToAgent } = await import("../lib/server/project-agent.ts");
+  const { defaultProject } = await import("../lib/types.ts");
+  const dir =
+    "/private/tmp/claude-501/-Users-victor-Documents-personal-AutoProject/4fe223bd-0cee-4edf-931c-01648c66e1ed/scratchpad/agent-inject";
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  writeProject(dir, defaultProject("Inject", dir));
+  const heard: string[] = [];
+  // An act turn in progress whose CLI takes messages mid-turn.
+  registry.agents.set(dir, new AbortController());
+  registry.agentMode.set(dir, "act");
+  registry.inputs.set(dir, (text) => (heard.push(text), true));
+  try {
+    assert.equal(sendToAgent(dir, "act", "Also d.txt"), null);
+    assert.deepEqual(heard, ["Also d.txt"]);
+    assert.deepEqual(runState(dir).agent.requests, []);
+    // Said in the transcript the moment it was sent, as the agent hears it.
+    assert.deepEqual(
+      store.getProject(dir)!.chat.map((c) => [c.kind, c.mode, c.text]),
+      [["user", "act", "Also d.txt"]]
+    );
+    // A board message never jumps into the chat turn.
+    const panel = sendToAgent(dir, "panel", "Add a cart")!;
+    assert.equal(panel.state, "queued");
+    assert.deepEqual(heard, ["Also d.txt"]);
+    // A turn that is over (or a CLI with no way in) sends it to the queue, unsaid.
+    registry.inputs.set(dir, () => false);
+    const late = sendToAgent(dir, "act", "And e.txt")!;
+    assert.equal(late.state, "queued");
+    assert.equal(store.getProject(dir)!.chat.length, 1);
+    // So does a chat message while the board's turn is the one running.
+    registry.inputs.set(dir, (text) => (heard.push(text), true));
+    registry.agentMode.set(dir, "panel");
+    assert.equal(sendToAgent(dir, "act", "And f.txt")!.state, "queued");
+    assert.deepEqual(heard, ["Also d.txt"]);
+  } finally {
+    registry.agents.delete(dir);
+    registry.agentMode.delete(dir);
+    registry.inputs.delete(dir);
     registry.requests.delete(dir);
     store.forget(dir);
     fs.rmSync(dir, { recursive: true, force: true });

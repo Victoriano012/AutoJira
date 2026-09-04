@@ -120,9 +120,20 @@ function requests(dir: string): AgentRequest[] {
 }
 
 /** Queue one message for the project agent, in `mode`. It runs as soon as the
- * turns before it are done; the reply travels through the project feed. */
-export function sendToAgent(dir: string, mode: Mode, message: string): AgentRequest {
+ * turns before it are done; the reply travels through the project feed. In the
+ * chat (act) the person is talking to the agent at work, so while an act turn
+ * runs the message goes straight into it instead — the agent hears it with its
+ * next tool result — and it is written to the transcript now, as heard. */
+export function sendToAgent(dir: string, mode: Mode, message: string): AgentRequest | null {
   if (!ensureLoaded(dir)) throw new Error(`No project at ${dir}`);
+  if (
+    mode === "act" &&
+    registry.agentMode.get(dir) === "act" &&
+    registry.inputs.get(dir)?.(message)
+  ) {
+    say(dir, mode, { kind: "user", text: message });
+    return null;
+  }
   const req: AgentRequest = { id: crypto.randomUUID(), mode, text: message, state: "queued" };
   requests(dir).push(req);
   notifyAgent(dir);
@@ -239,7 +250,9 @@ async function turn(
         outputSchema: fallback ? REQUEST_SCHEMA : undefined,
       });
       for await (const ev of events) {
-        if (ev.type === "init") {
+        if (ev.type === "input") {
+          registry.inputs.set(dir, ev.push);
+        } else if (ev.type === "init") {
           store.setAgentSession(dir, ev.sessionId);
         } else if (ev.type === "text" || ev.type === "tool") {
           produced = true;
@@ -257,6 +270,7 @@ async function turn(
     } catch (err) {
       failed = String(err);
     }
+    registry.inputs.delete(dir);
     if (signal.aborted) {
       say(dir, mode, { kind: "info", text: "Stopped by user" });
       return null;

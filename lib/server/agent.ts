@@ -3,6 +3,7 @@ import {
   type AgentDefinition,
   type McpServerConfig,
   type ModelUsage,
+  type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs";
 import os from "os";
@@ -25,6 +26,10 @@ export interface RunUsage {
 /** One agent turn, as the ticket runner consumes it. */
 export type AgentEvent =
   | { type: "init"; sessionId: string }
+  /** Claude only, before init: `push` hands a follow-up message to the running
+   * turn, which the model sees with its next tool result; false once the turn
+   * is over and the message must wait for a new one. */
+  | { type: "input"; push: (text: string) => boolean }
   /** `sub`: produced inside a subagent (act mode), so a transcript can indent it. */
   | { type: "text"; text: string; sub?: boolean }
   | { type: "tool"; text: string; sub?: boolean }
@@ -167,8 +172,40 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
   const model = req.model!;
   const resume = resumableSession(req.sessionId, model);
   const kill = new AbortController();
+  // The prompt goes in as a stream that stays open for the turn: the CLI then
+  // treats a message sent mid-turn like one typed into Claude Code while it
+  // works, folding it in with the next tool result rather than after the turn
+  // (a message that misses the turn's last tool call runs as its own turn on
+  // the same process). Closing the stream is what lets the process exit.
+  const pending: SDKUserMessage[] = [];
+  let wake = () => {};
+  let closed = false;
+  const push = (text: string): boolean => {
+    if (closed) return false;
+    pending.push({
+      type: "user",
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+      session_id: "",
+    });
+    wake();
+    return true;
+  };
+  const endInput = () => {
+    closed = true;
+    wake();
+  };
+  push(req.prompt);
+  async function* input(): AsyncGenerator<SDKUserMessage> {
+    for (;;) {
+      const next = pending.shift();
+      if (next) yield next;
+      else if (closed) return;
+      else await new Promise<void>((r) => (wake = r));
+    }
+  }
   const q = query({
-    prompt: req.prompt,
+    prompt: input(),
     options: {
       cwd: req.workspaceDir,
       model,
@@ -239,6 +276,7 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
   req.signal.addEventListener("abort", onAbort);
 
   try {
+    yield { type: "input", push };
     for await (const msg of q) {
       if (msg.type === "system" && msg.subtype === "init") {
         live = true;
@@ -262,8 +300,8 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
         }
       } else if (msg.type === "result") {
         // modelUsage is the SDK's own accounting field (main loop, subagents
-        // and internal calls), cumulative over this query() call — one prompt
-        // here, so the single result message carries the whole session.
+        // and internal calls), cumulative over this query() call, so the last
+        // result message carries the whole session.
         const usage = claudeUsage(msg.modelUsage);
         yield msg.subtype === "success"
           ? {
@@ -279,11 +317,16 @@ async function* streamClaudeAgent(req: AgentRequest): AsyncGenerator<AgentEvent>
               text: `Agent stopped: ${msg.subtype}`,
               usage,
             };
+        // Stopping drops whatever was pushed and not yet heard; otherwise the
+        // process keeps going only while a pushed message still has to run.
+        if (req.signal.aborted) break;
+        if (!msg.queued_turn_count) endInput();
       }
     }
   } catch (err) {
     yield { type: "error", message: String(err) };
   } finally {
+    endInput();
     req.signal.removeEventListener("abort", onAbort);
   }
 }
